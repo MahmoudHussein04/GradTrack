@@ -1,0 +1,30 @@
+{
+  "accounts": [
+    {
+      "role": "student",
+      "fullName": "Student Full Name",
+      "universityId": "20230001",
+      "email": "student@university.edu",
+      "department": "Software Engineering",
+      "academicYear": "4th year",
+      "password": "change-me-123"
+    },
+    {
+      "role": "leader",
+      "fullName": "Team Leader Full Name",
+      "universityId": "20230002",
+      "email": "leader@university.edu",
+      "department": "Software Engineering",
+      "academicYear": "4th year",
+      "password": "change-me-123"
+    },
+    {
+      "role": "supervisor",
+      "fullName": "Dr. Supervisor Name",
+      "universityId": "10050001",
+      "email": "supervisor@university.edu",
+      "department": "Software Engineering",
+      "password": "change-me-123"
+    }
+  ]
+}

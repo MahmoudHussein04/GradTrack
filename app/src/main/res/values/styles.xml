@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Type scale (Inter) -->
+    <style name="TextAppearance.GradTrack.Display" parent="TextAppearance.Material3.HeadlineMedium">
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textSize">30sp</item>
+        <item name="android:letterSpacing">-0.01</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textFontWeight" tools:targetApi="p">700</item>
+    </style>
+    <style name="TextAppearance.GradTrack.PageSubtitle" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/subtitle</item>
+    </style>
+    <style name="TextAppearance.GradTrack.Headline" parent="TextAppearance.Material3.HeadlineSmall">
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textFontWeight" tools:targetApi="p">600</item>
+    </style>
+    <style name="TextAppearance.GradTrack.Title" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textFontWeight" tools:targetApi="p">600</item>
+    </style>
+    <style name="TextAppearance.GradTrack.Label" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textFontWeight" tools:targetApi="p">500</item>
+    </style>
+    <style name="TextAppearance.GradTrack.Body" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/text_primary</item>
+    </style>
+    <style name="TextAppearance.GradTrack.Caption" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/text_secondary</item>
+    </style>
+    <style name="TextAppearance.GradTrack.Overline" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textFontWeight" tools:targetApi="p">500</item>
+    </style>
+    <style name="TextAppearance.GradTrack.Pill" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textFontWeight" tools:targetApi="p">500</item>
+    </style>
+
+    <style name="ShapeAppearance.GradTrack.Control" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">14dp</item>
+    </style>
+
+    <style name="Widget.GradTrack.Card" parent="Widget.Material3.CardView.Outlined">
+        <item name="cardBackgroundColor">@color/surface</item>
+        <item name="cardCornerRadius">20dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeColor">@color/outline</item>
+        <item name="strokeWidth">1dp</item>
+    </style>
+
+    <style name="Widget.GradTrack.Button" parent="Widget.Material3.Button">
+        <item name="android:minHeight">52dp</item>
+        <item name="android:textAppearance">@style/TextAppearance.GradTrack.Label</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.GradTrack.Control</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.GradTrack.Control</item>
+    </style>
+    <style name="Widget.GradTrack.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textAppearance">@style/TextAppearance.GradTrack.Label</item>
+        <item name="android:textColor">@color/primary_dark</item>
+        <item name="strokeColor">@color/outline</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.GradTrack.Control</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.GradTrack.Control</item>
+    </style>
+    <style name="Widget.GradTrack.Button.Danger" parent="Widget.GradTrack.Button.Outlined">
+        <item name="android:textColor">@color/error</item>
+        <item name="strokeColor">@color/error</item>
+        <item name="rippleColor">@color/pill_red_bg</item>
+    </style>
+    <style name="Widget.GradTrack.Button.Text" parent="Widget.Material3.Button.TextButton">
+        <item name="android:textAppearance">@style/TextAppearance.GradTrack.Label</item>
+        <item name="android:textColor">@color/primary</item>
+    </style>
+
+    <style name="Widget.GradTrack.TextInput" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxBackgroundColor">@color/surface</item>
+        <item name="boxStrokeColor">@color/box_stroke</item>
+        <item name="boxCornerRadiusTopStart">14dp</item>
+        <item name="boxCornerRadiusTopEnd">14dp</item>
+        <item name="boxCornerRadiusBottomStart">14dp</item>
+        <item name="boxCornerRadiusBottomEnd">14dp</item>
+        <item name="hintTextColor">@color/primary</item>
+    </style>
+    <style name="Widget.GradTrack.Dropdown" parent="Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
+        <item name="boxBackgroundColor">@color/surface</item>
+        <item name="boxStrokeColor">@color/box_stroke</item>
+        <item name="boxCornerRadiusTopStart">14dp</item>
+        <item name="boxCornerRadiusTopEnd">14dp</item>
+        <item name="boxCornerRadiusBottomStart">14dp</item>
+        <item name="boxCornerRadiusBottomEnd">14dp</item>
+    </style>
+
+
+    <!-- Status pill: set colours with TextView.applyPill() -->
+    <style name="Widget.GradTrack.Pill" parent="">
+        <item name="android:background">@drawable/bg_pill</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">3dp</item>
+        <item name="android:paddingBottom">3dp</item>
+        <item name="android:textAppearance">@style/TextAppearance.GradTrack.Pill</item>
+        <item name="android:maxLines">1</item>
+    </style>
+
+    <!-- Hero (dark gradient) surfaces -->
+    <style name="TextAppearance.GradTrack.HeroTitle" parent="TextAppearance.GradTrack.Title">
+        <item name="android:textColor">@color/white</item>
+        <item name="android:textSize">19sp</item>
+    </style>
+    <style name="TextAppearance.GradTrack.HeroCaption" parent="TextAppearance.GradTrack.Caption">
+        <item name="android:textColor">@color/nav_muted</item>
+    </style>
+    <style name="Widget.GradTrack.Button.OnHero" parent="Widget.GradTrack.Button">
+        <item name="backgroundTint">@color/background</item>
+        <item name="android:textColor">@color/primary_dark</item>
+        <item name="iconTint">@color/primary_dark</item>
+    </style>
+    <style name="Widget.GradTrack.GlassPill" parent="Widget.GradTrack.Pill">
+        <item name="android:background">@drawable/bg_glass_chip</item>
+        <item name="android:textColor">@color/white</item>
+    </style>
+</resources>

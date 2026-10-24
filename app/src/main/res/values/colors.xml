@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="white">#FFFFFF</color>
+    <color name="primary">#3B6B52</color>
+    <color name="primary_dark">#25463B</color>
+    <color name="primary_container">#E3EDE4</color>
+    <color name="background">#F8F4EA</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="outline">#EDE7D7</color>
+    <color name="text_primary">#1F2A37</color>
+    <color name="text_secondary">#5E6B66</color>
+    <color name="error">#B3261E</color>
+    <color name="nav_muted">#B9CCC0</color>
+    <color name="subtitle">#4F7A64</color>
+    <color name="header_chip_bg">#1AFFFFFF</color>
+    <color name="primary_soft">#EAF1EC</color>
+    <color name="hero_start">#2F5A49</color>
+    <color name="hero_end">#1C3A2F</color>
+    <color name="glass_stroke">#33FFFFFF</color>
+    <color name="glass_fill">#1FFFFFFF</color>
+    <color name="skeleton">#ECE6D6</color>
+    <color name="track">#E6E9E4</color>
+
+    <color name="pill_green_bg">#E3EDE4</color>
+    <color name="pill_green_fg">#2F5D46</color>
+    <color name="pill_yellow_bg">#F8EFCF</color>
+    <color name="pill_yellow_fg">#7A5B0A</color>
+    <color name="pill_orange_bg">#FCE5D4</color>
+    <color name="pill_orange_fg">#A4501A</color>
+    <color name="pill_red_bg">#F9DCDA</color>
+    <color name="pill_red_fg">#9C2B25</color>
+    <color name="pill_gray_bg">#ECE8DA</color>
+    <color name="pill_gray_fg">#5E6B66</color>
+    <color name="pill_blue_bg">#DDE8F7</color>
+    <color name="pill_blue_fg">#274C86</color>
+</resources>

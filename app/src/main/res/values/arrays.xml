@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="project_categories">
+        <item>Web Application</item>
+        <item>Mobile Application</item>
+        <item>Desktop Application</item>
+        <item>AI / Machine Learning</item>
+        <item>Embedded / IoT</item>
+        <item>Game</item>
+        <item>Other</item>
+    </string-array>
+</resources>
