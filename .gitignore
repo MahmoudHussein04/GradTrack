@@ -1,0 +1,19 @@
+.gradle/
+build/
+.kotlin/
+local.properties
+*.apk
+*.aab
+.idea/
+.DS_Store
+# Real accounts and passwords for the on-device API (see accounts.example.json)
+app/src/main/assets/accounts.json
+
+# Signing keys and secrets
+*.jks
+*.keystore
+keystore.properties
+secrets.properties
+*.env
+.env*
+google-services.json

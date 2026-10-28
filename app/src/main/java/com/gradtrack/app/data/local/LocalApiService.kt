@@ -35,7 +35,6 @@ import com.gradtrack.app.data.model.Submission
 import com.gradtrack.app.data.model.SubmissionStatus
 import com.gradtrack.app.data.model.SubmissionsOverview
 import com.gradtrack.app.data.model.SupervisorDashboard
-import com.gradtrack.app.data.model.SupervisorOption
 import com.gradtrack.app.data.model.TaskItem
 import com.gradtrack.app.data.model.TaskRequest
 import com.gradtrack.app.data.model.TaskStatus
@@ -53,6 +52,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
+import okhttp3.ResponseBody
+import okio.Buffer
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
@@ -64,27 +65,16 @@ import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import java.util.Base64
 
-/**
- * The API, running on the device, until the backend exists. Accounts come from `assets/accounts.json` (the
- * university's list); everything else (teams, projects, tasks...) is created by the users and saved to a JSON file in
- * app storage so it survives restarts.
- *
- * It enforces the same rules the backend must (docs/gradtrack §2 and §8: who may do what, team size, one team per
- * student, proposal and submission state changes) and answers with the same error shape, `{ "message": ... }`, so
- * switching to Retrofit changes nothing in the UI.
- */
 class LocalApiService(
     context: Context,
     private val session: SessionStore,
-    /** Testing mode: any university ID and any password sign in; unknown IDs become new accounts of the chosen role. */
     private val openLogin: Boolean,
 ) : ApiService {
     private val file = File(context.filesDir, "gradtrack-local.json")
+    private val uploadsDir = File(context.filesDir, "uploads")
     private val gson = Gson()
     private val mutex = Mutex()
     private val db: LocalDb = load().also { importAccounts(context, it) }
-
-    // ---- Auth & profile ----
 
     override suspend fun login(request: LoginRequest): AuthResponse =
         write {
@@ -104,7 +94,6 @@ class LocalApiService(
             AuthResponse(token(user), user)
         }
 
-    /** Testing mode only: the first sign-in with a new ID creates the account; the name can be edited in Profile. */
     private fun LocalDb.createTestAccount(universityId: String, role: Role, password: String): User {
         val name = "${roleName(role).replaceFirstChar { it.uppercase() }} $universityId"
         val user = User(newId("u"), name, "", universityId, null, null, role)
@@ -141,8 +130,6 @@ class LocalApiService(
             account.salt = newSalt()
             account.passwordHash = hash(request.newPassword, account.salt)
         }
-
-    // ---- Dashboards ----
 
     override suspend fun studentDashboard(): StudentDashboard =
         read {
@@ -181,8 +168,6 @@ class LocalApiService(
             )
         }
 
-    // ---- Project ----
-
     override suspend fun currentProject(): ProjectOverview =
         read {
             val me = me()
@@ -195,20 +180,21 @@ class LocalApiService(
             )
         }
 
-    override suspend fun supervisors(): List<SupervisorOption> =
-        read { accounts.mapNotNull { it.user }.filter { it.role == Role.SUPERVISOR }.map { SupervisorOption(it.id, it.fullName) } }
-
     override suspend fun registerProject(request: RegisterProjectRequest): Project =
         write {
             val me = requireRole(Role.LEADER, "Only the team leader can register the project.")
             val team = teamOf(me.id) ?: fail(409, "Create your team before registering the project.")
-            val supervisor = accounts.mapNotNull { it.user }.firstOrNull { it.id == request.supervisorId && it.role == Role.SUPERVISOR }
-                ?: fail(422, "Choose an academic supervisor.")
             if (request.title.trim().length < 5) fail(422, "The title must be at least 5 characters.")
             val now = Instant.now().toString()
             val existing = projectOf(team.id)
+            if (existing != null && existing.status !in setOf(ProjectStatus.CHANGES_REQUESTED, ProjectStatus.REJECTED)) {
+                fail(409, "The proposal was already sent to your supervisor and can't be edited.")
+            }
+            assignSupervisor(team)
+            val supervisor = accounts.mapNotNull { it.user }.firstOrNull { it.id == team.supervisorId && it.role == Role.SUPERVISOR }
+                ?: fail(422, "No supervisor has been assigned to your team yet. Try again once a supervisor account exists.")
             val project = existing ?: ProjectRecord(id = newId("p"), teamId = team.id, submittedAt = now)
-            val wasDecided = existing != null && existing.status in setOf(ProjectStatus.CHANGES_REQUESTED, ProjectStatus.REJECTED)
+            val wasDecided = existing != null
             project.apply {
                 supervisorId = supervisor.id
                 title = request.title.trim()
@@ -270,9 +256,6 @@ class LocalApiService(
             Feedback(record.id, me.fullName, record.createdAt, record.body)
         }
 
-    override suspend fun milestones(): List<Milestone> =
-        read { teamOf(me().id)?.let { projectOf(it.id) }?.let { p -> milestonesOf(p.id).map { it.toModel() } }.orEmpty() }
-
     override suspend fun submissions(): List<Submission> =
         read {
             val project = teamOf(me().id)?.let { projectOf(it.id) } ?: return@read emptyList()
@@ -291,17 +274,30 @@ class LocalApiService(
             }
             val name = file.headers?.get("Content-Disposition")?.substringAfter("filename=\"", "")?.substringBefore('"')?.ifBlank { null } ?: "deliverable"
             val record = SubmissionRecord(newId("s"), project.id, milestone.id, name, milestone.name, Instant.now().toString(), me.id)
+            val bytes = Buffer().also { file.body.writeTo(it) }.readByteArray()
+            uploadsDir.mkdirs()
+            File(uploadsDir, record.id).writeBytes(bytes)
             submissions += record
             notify(listOf(project.supervisorId), NotificationType.SUBMISSION, "New submission", "${teamName(project.teamId)} submitted $name for ${milestone.name}.")
             toModel(record)
         }
 
-    // ---- Team ----
-
-    override suspend fun myTeam(): MyTeam =
+    override suspend fun submissionFile(submissionId: String): ResponseBody =
         read {
             val me = me()
-            val team = teamOf(me.id)
+            val submission = submissions.firstOrNull { it.id == submissionId } ?: fail(404, "Submission not found.")
+            val project = projects.first { it.id == submission.projectId }
+            val allowed = project.supervisorId == me.id || teams.firstOrNull { it.id == project.teamId }?.memberIds?.contains(me.id) == true
+            if (!allowed) fail(403, "You can't open this file.")
+            val stored = File(uploadsDir, submission.id)
+            if (!stored.exists()) fail(404, "This file is no longer available. Ask the team to upload it again.")
+            stored.readBytes().toResponseBody("application/octet-stream".toMediaType())
+        }
+
+    override suspend fun myTeam(): MyTeam =
+        write {
+            val me = me()
+            val team = teamOf(me.id)?.also { assignSupervisor(it) }
             val invites =
                 if (team != null) {
                     emptyList()
@@ -322,6 +318,7 @@ class LocalApiService(
             if (name.length < 3) fail(422, "The team name must be at least 3 characters.")
             if (teams.any { it.name.equals(name, ignoreCase = true) }) fail(409, "Another team already uses this name.")
             val team = TeamRecord(newId("t"), name, me.id, MAX_MEMBERS, mutableListOf(me.id), Instant.now().toString())
+            assignSupervisor(team)
             teams += team
             toModel(team)
         }
@@ -374,8 +371,6 @@ class LocalApiService(
             tasks.filter { it.teamId == team.id && it.assigneeId == userId && it.status != TaskStatus.DONE }.forEach { it.status = TaskStatus.CANCELLED }
             notify(listOf(userId), NotificationType.TEAM, "Removed from team", "You are no longer a member of ${team.name}.")
         }
-
-    // ---- Tasks ----
 
     override suspend fun tasks(): List<TaskItem> =
         read {
@@ -433,8 +428,6 @@ class LocalApiService(
             toModel(task)
         }
 
-    // ---- Notifications ----
-
     override suspend fun notifications(): List<NotificationItem> =
         read {
             val me = me()
@@ -448,8 +441,6 @@ class LocalApiService(
             val me = me()
             notifications.filter { it.userId == me.id }.forEach { it.read = true }
         }
-
-    // ---- Supervisor ----
 
     override suspend fun proposals(): List<ProposalSummary> =
         read {
@@ -536,8 +527,6 @@ class LocalApiService(
             toModel(submission)
         }
 
-    // ---- Domain helpers ----
-
     private fun LocalDb.createMilestones(project: ProjectRecord) {
         val start = LocalDate.now()
         STAGES.forEachIndexed { index, (name, days) ->
@@ -552,7 +541,6 @@ class LocalApiService(
         }
     }
 
-    /** Marks a stage done and opens the next one; the last stage completes the project. */
     private fun LocalDb.completeMilestone(project: ProjectRecord, milestone: MilestoneRecord) {
         milestone.status = MilestoneStatus.COMPLETED
         val next = milestonesOf(project.id).firstOrNull { it.status == MilestoneStatus.UPCOMING }
@@ -620,6 +608,11 @@ class LocalApiService(
         )
     }
 
+    private fun LocalDb.assignSupervisor(team: TeamRecord) {
+        val supervisors = accounts.mapNotNull { it.user }.filter { it.role == Role.SUPERVISOR }
+        if (supervisors.none { it.id == team.supervisorId }) team.supervisorId = supervisors.randomOrNull()?.id.orEmpty()
+    }
+
     private fun LocalDb.toModel(team: TeamRecord): TeamInfo {
         val project = projectOf(team.id)
         return TeamInfo(
@@ -634,7 +627,7 @@ class LocalApiService(
             maxMembers = team.maxMembers,
             pendingInvites = invitations.count { it.teamId == team.id && it.status == InvitationRecord.STATUS_PENDING },
             projectTitle = project?.title,
-            supervisorName = project?.let { userName(it.supervisorId) },
+            supervisorName = (project?.supervisorId ?: team.supervisorId).takeIf { it.isNotEmpty() }?.let { userName(it) },
             semester = semesterOf(team.createdAt),
         )
     }
@@ -658,12 +651,6 @@ class LocalApiService(
 
     private fun MilestoneRecord.toModel() = Milestone(id, name, dueDate, status)
 
-    // ---- Accounts file ----
-
-    /**
-     * Adds the people listed in `assets/accounts.json` (the university's list, see accounts.example.json) to the
-     * database. People already imported keep their data and any password they changed in the app.
-     */
     private fun importAccounts(context: Context, db: LocalDb) {
         val json = runCatching { context.assets.open(ACCOUNTS_FILE).bufferedReader().use { it.readText() } }.getOrNull() ?: return
         val listing = runCatching { gson.fromJson(json, AccountsFile::class.java) }.getOrNull() ?: return
@@ -714,15 +701,12 @@ class LocalApiService(
             Role.SUPERVISOR -> "supervisor"
         }
 
-    // ---- Storage ----
-
     private suspend fun <T> read(block: LocalDb.() -> T): T =
         mutex.withLock {
             delay(LATENCY_MS)
             db.block()
         }
 
-    /** Runs a change and saves the database. A [fail] inside [block] throws before anything is written. */
     private suspend fun <T> write(block: LocalDb.() -> T): T =
         mutex.withLock {
             delay(LATENCY_MS)
@@ -783,7 +767,6 @@ class LocalApiService(
         val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$")
         val UNIVERSITY_ID = Regex("^\\d{5,12}$")
 
-        /** The five fixed stages (docs/gradtrack §3, decision 4) and their offset in days from registration. */
         val STAGES = listOf("Proposal" to 14L, "Design" to 45L, "Development" to 90L, "Testing" to 120L, "Defense" to 150L)
     }
 }

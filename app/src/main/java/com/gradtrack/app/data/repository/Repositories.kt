@@ -9,7 +9,6 @@ import com.gradtrack.app.data.model.Feedback
 import com.gradtrack.app.data.model.FeedbackRequest
 import com.gradtrack.app.data.model.InviteRequest
 import com.gradtrack.app.data.model.LoginRequest
-import com.gradtrack.app.data.model.Milestone
 import com.gradtrack.app.data.model.MyTeam
 import com.gradtrack.app.data.model.NotificationItem
 import com.gradtrack.app.data.model.Project
@@ -25,7 +24,6 @@ import com.gradtrack.app.data.model.StudentDashboard
 import com.gradtrack.app.data.model.Submission
 import com.gradtrack.app.data.model.SubmissionsOverview
 import com.gradtrack.app.data.model.SupervisorDashboard
-import com.gradtrack.app.data.model.SupervisorOption
 import com.gradtrack.app.data.model.TaskItem
 import com.gradtrack.app.data.model.TaskRequest
 import com.gradtrack.app.data.model.TaskStatus
@@ -38,8 +36,10 @@ import com.gradtrack.app.data.safeCall
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
-/** A file chosen by the user, already read into memory (deliverables are capped at 25 MB by the UI). */
 class UploadFile(val name: String, val mimeType: String?, val bytes: ByteArray)
 
 class AuthRepository(private val api: ApiService, private val session: SessionStore) {
@@ -68,21 +68,17 @@ class AuthRepository(private val api: ApiService, private val session: SessionSt
 class DashboardRepository(private val api: ApiService) {
     suspend fun student(): Resource<StudentDashboard> = safeCall { api.studentDashboard() }
 
-    suspend fun supervisor(): Resource<SupervisorDashboard> = safeCall { api.supervisorDashboard() }
+    suspend fun supervisor(): Resource<SupervisorDashboard> = safeCall { api. supervisorDashboard() }
 }
 
 class ProjectRepository(private val api: ApiService) {
     suspend fun overview(): Resource<ProjectOverview> = safeCall { api.currentProject() }
-
-    suspend fun supervisors(): Resource<List<SupervisorOption>> = safeCall { api.supervisors() }
 
     suspend fun register(request: RegisterProjectRequest): Resource<Project> = safeCall { api.registerProject(request) }
 
     suspend fun proposalStatus(): Resource<ProposalStatusInfo> = safeCall { api.proposalStatus() }
 
     suspend fun reply(body: String): Resource<Feedback> = safeCall { api.replyToFeedback(FeedbackRequest(body.trim())) }
-
-    suspend fun milestones(): Resource<List<Milestone>> = safeCall { api.milestones() }
 
     suspend fun submissions(): Resource<List<Submission>> = safeCall { api.submissions() }
 
@@ -137,4 +133,15 @@ class ReviewRepository(private val api: ApiService) {
 
     suspend fun reviewSubmission(id: String, decision: ReviewDecision, comment: String): Resource<Submission> =
         safeCall { api.reviewSubmission(id, ReviewRequest(decision, comment.trim().ifBlank { null })) }
+}
+
+class FileRepository(private val api: ApiService, private val cacheDir: File) {
+    suspend fun submissionFile(submission: Submission): Resource<File> =
+        safeCall {
+            val body = api.submissionFile(submission.id)
+            withContext(Dispatchers.IO) {
+                val dir = File(cacheDir, submission.id).apply { mkdirs() }
+                File(dir, submission.fileName.substringAfterLast('/')).apply { body.byteStream().use { input -> outputStream().use { input.copyTo(it) } } }
+            }
+        }
 }

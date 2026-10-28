@@ -3,18 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-/**
- * `-PgradtrackApiBaseUrl=https://host/api/v1/` points the app at the real backend;
- * `-PgradtrackLocal=false` turns the on-device API off (default: on, the backend does not exist yet).
- * `-PgradtrackOpenLogin=false` makes the on-device API check passwords (default: off while the UI is being tested).
- */
 val apiBaseUrl = (findProperty("gradtrackApiBaseUrl") as String?) ?: "http://10.0.2.2:3000/api/v1/"
 val useLocalApi = ((findProperty("gradtrackLocal") as String?) ?: "true").toBoolean()
 val openLogin = ((findProperty("gradtrackOpenLogin") as String?) ?: "true").toBoolean()
 
 android {
     namespace = "com.gradtrack.app"
-    // 37 because the Liquid Glass library (backdrop 2.0.1) declares minCompileSdk 37; the app still targets 36.
     compileSdk = 37
 
     defaultConfig {
@@ -44,7 +38,6 @@ android {
     }
 
     buildFeatures {
-        viewBinding = true
         compose = true
         buildConfig = true
     }
@@ -52,16 +45,17 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.androidx.activity.ktx)
-    implementation(libs.androidx.fragment.ktx)
-    implementation(libs.androidx.lifecycle.viewmodel.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.navigation.fragment.ktx)
-    implementation(libs.androidx.navigation.ui.ktx)
-    implementation(libs.androidx.recyclerview)
-    implementation(libs.androidx.swiperefreshlayout)
-    implementation(libs.material)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.navigation.compose)
+
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.retrofit)
     implementation(libs.retrofit.gson)
@@ -69,15 +63,13 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
 
-    implementation(libs.coil)
+    implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
 
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.backdrop)
     implementation(libs.kyant.shapes)
-    implementation(libs.compose.foundation)
-    implementation(libs.compose.ui)
 
     testImplementation(libs.junit4)
     testImplementation(libs.truth)

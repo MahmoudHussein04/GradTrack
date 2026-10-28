@@ -3,10 +3,8 @@
     <string name="app_name">GradTrack</string>
     <string name="brand_tagline">Graduation Project Management</string>
 
-    <!-- Navigation & titles -->
     <string name="crumb_tasks">Workspace / Tasks</string>
     <string name="crumb_team">Workspace / My team</string>
-    <string name="crumb_milestones">Project workspace / Deliverables</string>
     <string name="crumb_proposals">Supervisor workspace / Proposals</string>
     <string name="crumb_submissions">Workspace / Submissions</string>
     <string name="crumb_register">Student workspace / Projects</string>
@@ -17,26 +15,17 @@
     <string name="nav_profile">Profile</string>
     <string name="nav_proposals">Proposals</string>
     <string name="nav_submissions">Submissions</string>
-    <string name="title_dashboard">GradTrack</string>
-    <string name="title_project">My Project</string>
     <string name="title_register_project">Register Project</string>
     <string name="title_proposal_status">Proposal Status</string>
     <string name="title_proposal">Proposal</string>
     <string name="title_team">My Team</string>
-    <string name="title_milestones">Milestones</string>
-    <string name="title_tasks">Tasks</string>
     <string name="title_notifications">Notifications</string>
-    <string name="title_profile">Profile &amp; Settings</string>
     <string name="title_proposal_reviews">Proposal Reviews</string>
     <string name="title_proposal_review">Proposal Review</string>
     <string name="title_submission_reviews">Submission Review</string>
 
-    <!-- Common -->
-    <string name="loading">Loading</string>
     <string name="retry">Try again</string>
     <string name="cancel">Cancel</string>
-    <string name="close">Close</string>
-    <string name="confirm">Confirm</string>
     <string name="save">Save</string>
     <string name="send">Send</string>
     <string name="add">Add</string>
@@ -49,7 +38,6 @@
     <string name="description">Description</string>
     <string name="recent_activity">Recent activity</string>
 
-    <!-- Errors -->
     <string name="error_title">Something went wrong</string>
     <string name="error_no_connection">No internet connection. Check your network and try again.</string>
     <string name="error_timeout">The server took too long to respond. Try again in a moment.</string>
@@ -70,10 +58,8 @@
     <string name="error_fix_fields">Please fix the highlighted fields</string>
     <string name="error_file_too_large">The file is larger than 25 MB</string>
     <string name="error_file_read">Could not read the selected file</string>
-    <string name="error_no_open_milestone">There is no open milestone to submit to</string>
     <string name="error_feedback_required">Explain your decision so the team knows what to do next</string>
 
-    <!-- Login -->
     <string name="login_hero">Your graduation project, organized.</string>
     <string name="login_hero_body">From proposal to successful defense. Teams, milestones, submissions and supervisor feedback in one place.</string>
     <string name="login_welcome">Welcome back</string>
@@ -85,7 +71,6 @@
     <string name="login_helper_supervisor">Review proposals, follow milestones and provide feedback.</string>
     <string name="hint_university_id">University ID</string>
     <string name="hint_university_id_label">University ID</string>
-    <string name="hint_email">Email address</string>
     <string name="hint_password">Password</string>
     <string name="login_as_student">Login as Student</string>
     <string name="login_as_leader">Login as Team Leader</string>
@@ -94,7 +79,6 @@
     <string name="forgot_password_soon">Password recovery will be available once the server is connected.</string>
     <string name="login_footer">Secure access for your graduation project journey.</string>
 
-    <!-- Dashboards -->
     <string name="student_workspace">Student workspace</string>
     <string name="leader_workspace">Team leader workspace</string>
     <string name="supervisor_workspace">Supervisor workspace</string>
@@ -121,10 +105,8 @@
     <string name="due_overdue">Overdue</string>
     <string name="proposal_meta">%1$s · %2$s</string>
 
-    <!-- Project -->
     <string name="project_overview_overline">My project · Overview</string>
     <string name="project_meta">%1$s · Academic year %2$s</string>
-    <string name="edit_details">Edit details</string>
     <string name="no_project_title">No project yet</string>
     <string name="no_project_leader">Register your graduation project and send the proposal to your supervisor.</string>
     <string name="no_project_student">Your team leader has not registered the project yet.</string>
@@ -138,12 +120,8 @@
     <string name="reply_to_feedback">Reply to feedback</string>
     <string name="hint_reply">Your reply</string>
     <string name="reply_sent">Reply sent</string>
-    <string name="latest_submissions">Latest submissions</string>
     <string name="no_submissions_yet">Nothing has been submitted yet.</string>
-    <string name="uploaded_on">Uploaded %1$s</string>
-    <string name="view_all_submissions">View all submissions</string>
 
-    <!-- Register project wizard -->
     <string name="register_heading">Register your project</string>
     <string name="register_subtitle">Complete the proposal details before sending them to your supervisor.</string>
     <string name="step_project_info">1 · Info</string>
@@ -152,10 +130,10 @@
     <string name="field_required_hint">Fields marked * are required.</string>
     <string name="field_project_title">Project title *</string>
     <string name="field_category">Project category *</string>
-    <string name="field_supervisor">Academic supervisor *</string>
+    <string name="field_supervisor">Academic supervisor</string>
+    <string name="supervisor_not_assigned">Not assigned yet</string>
     <string name="field_problem">Problem statement *</string>
     <string name="field_objectives">Project objectives *</string>
-    <string name="field_objectives_short">Objectives</string>
     <string name="field_technologies">Proposed technologies</string>
     <string name="hint_technology">Add a technology</string>
     <string name="field_proposal_pdf">Proposal document (PDF) *</string>
@@ -169,7 +147,6 @@
     <string name="submit_proposal">Submit proposal</string>
     <string name="proposal_submitted">Proposal submitted to your supervisor</string>
 
-    <!-- Proposal status -->
     <string name="proposal_dates">Submitted on %1$s · Last updated %2$s</string>
     <string name="proposal_msg_under_review">Your supervisor is reviewing the proposal. You will be notified when feedback is available.</string>
     <string name="proposal_msg_changes">Your supervisor asked for changes. Read the feedback below, update the proposal and send it again.</string>
@@ -184,7 +161,6 @@
     <string name="step_waiting">Waiting</string>
     <string name="no_feedback_after_review">No feedback yet. Comments will appear here after the review.</string>
 
-    <!-- Statuses -->
     <string name="status_draft">Draft</string>
     <string name="status_submitted">Submitted</string>
     <string name="status_under_review">Under review</string>
@@ -208,22 +184,21 @@
     <string name="type_task">Task</string>
     <string name="type_submission">Submission</string>
 
-    <!-- Milestones -->
-    <string name="milestones_heading">Milestones &amp; submissions</string>
-    <string name="milestones_subtitle">Upload deliverables and follow supervisor reviews.</string>
+    <string name="open_file">Open file</string>
+    <string name="error_no_viewer">No app on this device can open this file.</string>
     <string name="upload_deliverable">Upload deliverable</string>
-    <string name="milestone_timeline">Milestone timeline</string>
+    <string name="upload_deliverable_for">Upload deliverable · %1$s</string>
+    <string name="deliverable_in_review">Your %1$s deliverable is waiting for the supervisor\'s review.</string>
+    <string name="deliverables_after_approval">You can upload deliverables once your supervisor approves the proposal.</string>
     <string name="submitted_deliverables">Submitted deliverables</string>
     <string name="not_submitted_yet">Not submitted yet</string>
     <string name="upload_confirm">Submit “%1$s” as the deliverable for the %2$s milestone?</string>
     <string name="deliverable_uploaded">Deliverable uploaded</string>
 
-    <!-- Team -->
     <string name="team_heading">Team management</string>
     <string name="team_subtitle">Keep your team organized and moving forward.</string>
     <string name="stat_your_role">Your role</string>
-    <string name="role_leader_short">Leader</string>
-    <string name="role_member_short">Member</string>
+    <string name="role_team_member">Team Member</string>
     <string name="team_complete">Team complete</string>
     <string name="team_has_room">Room for more</string>
     <string name="invite_member">Invite member</string>
@@ -238,7 +213,6 @@
     <string name="remove_member_confirm">Remove %1$s from the team? Their open tasks will be cancelled.</string>
     <string name="member_removed">Member removed</string>
 
-    <!-- Tasks -->
     <string name="tasks_heading">Tasks</string>
     <string name="tasks_subtitle">Keep your graduation project organized and moving forward.</string>
     <string name="stat_total_tasks">Total tasks</string>
@@ -251,7 +225,6 @@
     <string name="add_task">Add task</string>
     <string name="edit_task">Edit task</string>
     <string name="cancel_task">Cancel task</string>
-    <string name="keep_task">Keep task</string>
     <string name="cancel_task_confirm">Cancel “%1$s”? It will disappear from the board.</string>
     <string name="task_meta_due">Assigned to %1$s · Due %2$s</string>
     <string name="task_meta_done">Assigned to %1$s · Done %2$s</string>
@@ -265,11 +238,9 @@
     <string name="field_assignee">Assign to *</string>
     <string name="field_due_date">Due date</string>
 
-    <!-- Notifications -->
     <string name="mark_all_read">Mark all as read</string>
     <string name="no_notifications">You are all caught up.</string>
 
-    <!-- Profile -->
     <string name="role_team_leader">Team Leader</string>
     <string name="role_supervisor_full">Academic Supervisor</string>
     <string name="personal_information">Personal information</string>
@@ -288,7 +259,6 @@
     <string name="log_out">Log out</string>
     <string name="log_out_confirm">You will need to sign in again to use GradTrack.</string>
 
-    <!-- Supervisor review -->
     <string name="proposal_list_subtitle">Open a proposal to read it and record your decision.</string>
     <string name="no_proposals">There are no proposals yet.</string>
     <string name="review_intro">Review the project details, team information, and decide on the next step.</string>
@@ -296,7 +266,6 @@
     <string name="tab_details">Details</string>
     <string name="tab_team">Team</string>
     <string name="tab_documents">Documents</string>
-    <string name="project_overview">Project overview</string>
     <string name="category_label">Category</string>
     <string name="target_users">Target users</string>
     <string name="estimated_duration">Estimated duration</string>
@@ -323,7 +292,6 @@
     <string name="request_revision">Request revision</string>
     <string name="revision_helper">Required when requesting a revision.</string>
 
-    <!-- Accounts, teams, empty states (v2) -->
     <string name="accept">Accept</string>
     <string name="decline">Decline</string>
     <string name="create">Create</string>
@@ -341,8 +309,6 @@
     <string name="empty_invitations_body">When a team leader invites you, the invitation appears here and you can accept it.</string>
     <string name="empty_filter_title">Nothing in this filter</string>
     <string name="empty_filter_body">Try another status above to see more tasks.</string>
-    <string name="empty_milestones_title">No milestones yet</string>
-    <string name="empty_milestones_body">Milestones are created when your team registers its project.</string>
     <string name="empty_notifications_title">No notifications</string>
     <string name="empty_proposals_title">No proposals yet</string>
     <string name="empty_submissions_title">No submissions yet</string>
@@ -365,15 +331,16 @@
     <string name="next_join_team_title">Join a team</string>
     <string name="next_join_team_body">Share your university ID %1$s with your team leader. Their invitation will appear on the team screen.</string>
     <string name="next_register_title">Register your project</string>
-    <string name="next_register_body">Describe your idea, choose a supervisor and send the proposal for review.</string>
+    <string name="next_register_body">Describe your idea and send the proposal. A supervisor is assigned to your team automatically.</string>
     <string name="next_wait_project_title">Waiting for the proposal</string>
     <string name="next_wait_project_body">Your team leader has not registered the project yet. You’ll be notified when it’s sent.</string>
     <string name="no_activity">No activity yet.</string>
-    <string name="no_supervisors_yet">No supervisor accounts yet — ask your supervisor to sign up.</string>
     <string name="not_registered_yet">Not registered yet</string>
     <string name="objectives_helper">One objective per line</string>
     <string name="open_project">Open project</string>
     <string name="proposals_waiting_body">Teams are waiting for your decision. Review them to keep projects moving.</string>
+    <string name="proposal_locked_title">Proposal already sent</string>
+    <string name="proposal_locked_body">The proposal can\'t be edited while your supervisor reviews it. You can revise it only if the supervisor requests changes.</string>
     <string name="register_needs_team">A project belongs to a team. Create your team first, then come back to register the project.</string>
     <string name="review_now">Review now</string>
     <string name="save_and_send">Save and send</string>
@@ -385,7 +352,6 @@
     <string name="stat_members">Members</string>
     <string name="stat_invites">Invites</string>
     <string name="just_now">Just now</string>
-    <string name="login_as_role">Sign in as %1$s</string>
     <string name="or_continue_as">Or continue as</string>
     <string name="or_continue_as_hint">Team leaders and supervisors sign in here.</string>
     <string name="or_continue_as_switch">Not your account type? Switch login.</string>

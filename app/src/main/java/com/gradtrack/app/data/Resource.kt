@@ -20,10 +20,8 @@ enum class ErrorKind {
     UNKNOWN,
 }
 
-/** A failure the UI can describe to the user. [serverMessage] is the backend's own text when it sent one. */
 data class AppError(val kind: ErrorKind, val serverMessage: String? = null)
 
-/** Result of a repository call: either data or an [AppError]. Repositories never throw to ViewModels. */
 sealed interface Resource<out T> {
     data class Success<T>(val data: T) : Resource<T>
 
@@ -32,7 +30,6 @@ sealed interface Resource<out T> {
 
 private val errorGson = Gson()
 
-/** Runs a network call and converts every failure into a [Resource.Failure]. Cancellation is rethrown. */
 suspend fun <T> safeCall(block: suspend () -> T): Resource<T> =
     try {
         Resource.Success(block())

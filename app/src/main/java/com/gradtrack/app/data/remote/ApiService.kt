@@ -21,7 +21,6 @@ import com.gradtrack.app.data.model.StudentDashboard
 import com.gradtrack.app.data.model.Submission
 import com.gradtrack.app.data.model.SubmissionsOverview
 import com.gradtrack.app.data.model.SupervisorDashboard
-import com.gradtrack.app.data.model.SupervisorOption
 import com.gradtrack.app.data.model.TaskItem
 import com.gradtrack.app.data.model.TaskRequest
 import com.gradtrack.app.data.model.TaskStatusRequest
@@ -29,6 +28,7 @@ import com.gradtrack.app.data.model.TeamInfo
 import com.gradtrack.app.data.model.UpdateProfileRequest
 import com.gradtrack.app.data.model.User
 import okhttp3.MultipartBody
+import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -37,8 +37,8 @@ import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
+import retrofit2.http.Streaming
 
-/** The REST contract (docs/gradtrack §7). Implemented by Retrofit in production and by [LocalApiService] while the backend is not built. */
 interface ApiService {
     @POST("auth/login")
     suspend fun login(@Body request: LoginRequest): AuthResponse
@@ -61,9 +61,6 @@ interface ApiService {
     @GET("projects/current")
     suspend fun currentProject(): ProjectOverview
 
-    @GET("supervisors")
-    suspend fun supervisors(): List<SupervisorOption>
-
     @POST("projects")
     suspend fun registerProject(@Body request: RegisterProjectRequest): Project
 
@@ -73,8 +70,6 @@ interface ApiService {
     @POST("projects/current/feedback")
     suspend fun replyToFeedback(@Body request: FeedbackRequest): Feedback
 
-    @GET("projects/current/milestones")
-    suspend fun milestones(): List<Milestone>
 
     @GET("projects/current/submissions")
     suspend fun submissions(): List<Submission>
@@ -82,6 +77,10 @@ interface ApiService {
     @Multipart
     @POST("milestones/{id}/submissions")
     suspend fun uploadDeliverable(@Path("id") milestoneId: String, @Part file: MultipartBody.Part): Submission
+
+    @Streaming
+    @GET("submissions/{id}/file")
+    suspend fun submissionFile(@Path("id") submissionId: String): ResponseBody
 
     @GET("teams/me")
     suspend fun myTeam(): MyTeam

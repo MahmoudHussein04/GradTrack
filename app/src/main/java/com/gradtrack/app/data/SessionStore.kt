@@ -5,10 +5,12 @@ import com.google.gson.Gson
 import com.gradtrack.app.data.model.User
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
-/** Persists the access token and the signed-in user, and announces when the server rejects the token. */
 class SessionStore(context: Context) {
     private val prefs = context.getSharedPreferences("gradtrack_session", Context.MODE_PRIVATE)
     private val gson = Gson()
@@ -18,23 +20,31 @@ class SessionStore(context: Context) {
 
     val token: String? get() = prefs.getString(KEY_TOKEN, null)
 
+    private val _currentUser = MutableStateFlow(readUser())
+
+    val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
+
     var user: User?
-        get() = prefs.getString(KEY_USER, null)?.let { runCatching { gson.fromJson(it, User::class.java) }.getOrNull() }
+        get() = _currentUser.value
         set(value) {
             prefs.edit().putString(KEY_USER, value?.let(gson::toJson)).apply()
+            _currentUser.value = value
         }
+
+    private fun readUser(): User? = prefs.getString(KEY_USER, null)?.let { runCatching { gson.fromJson(it, User::class.java) }.getOrNull() }
 
     val isSignedIn: Boolean get() = token != null && user != null
 
     fun save(token: String, user: User) {
         prefs.edit().putString(KEY_TOKEN, token).putString(KEY_USER, gson.toJson(user)).apply()
+        _currentUser.value = user
     }
 
     fun clear() {
         prefs.edit().clear().apply()
+        _currentUser.value = null
     }
 
-    /** Called by the network layer on HTTP 401: drops the session and tells the UI to go back to login. */
     fun onUnauthorized() {
         clear()
         _expired.tryEmit(Unit)

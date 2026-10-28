@@ -7,11 +7,6 @@ import com.gradtrack.app.data.model.SubmissionStatus
 import com.gradtrack.app.data.model.TaskStatus
 import com.gradtrack.app.data.model.User
 
-/*
- * On-device tables used by LocalApiService until the backend exists. They mirror the backend data model in
- * docs/gradtrack §8. Every property has a default so Gson can create the classes through the no-arg constructor.
- */
-
 data class AccountRecord(
     var user: User? = null,
     var salt: String = "",
@@ -25,6 +20,7 @@ data class TeamRecord(
     var maxMembers: Int = 4,
     val memberIds: MutableList<String> = mutableListOf(),
     var createdAt: String = "",
+    var supervisorId: String = "",
 )
 
 data class InvitationRecord(
