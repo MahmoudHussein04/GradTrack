@@ -8,6 +8,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import com.gradtrack.app.data.Resource
+import com.gradtrack.app.data.model.Milestone
 import com.gradtrack.app.data.model.MilestoneStatus
 import com.gradtrack.app.data.model.ProjectStatus
 import com.gradtrack.app.data.model.Submission
@@ -60,6 +61,7 @@ import com.gradtrack.app.ui.components.ProgressBar
 import com.gradtrack.app.ui.components.SecondaryButton
 import com.gradtrack.app.ui.components.SectionTitle
 import com.gradtrack.app.ui.components.SubmissionRow
+import com.gradtrack.app.ui.components.TextAction
 import com.gradtrack.app.ui.components.TextPromptDialog
 import com.gradtrack.app.ui.theme.Gt
 import com.gradtrack.app.ui.theme.GtType
@@ -86,6 +88,24 @@ class ProjectDetailsViewModel(private val repository: ProjectRepository) : Loada
             send(UiEvent.Message(R.string.reply_sent))
         }
 
+    fun addMilestone(name: String, dueDate: String) =
+        act({ repository.addMilestone(name, dueDate) }) {
+            send(UiEvent.Message(R.string.milestone_added))
+            refresh()
+        }
+
+    fun updateMilestone(id: String, name: String, dueDate: String) =
+        act({ repository.updateMilestone(id, name, dueDate) }) {
+            send(UiEvent.Message(R.string.milestone_saved))
+            refresh()
+        }
+
+    fun deleteMilestone(id: String) =
+        act({ repository.deleteMilestone(id) }) {
+            send(UiEvent.Message(R.string.milestone_deleted))
+            refresh()
+        }
+
     fun upload(milestoneId: String, file: UploadFile) =
         act({ repository.upload(milestoneId, file) }) {
             send(UiEvent.Message(R.string.deliverable_uploaded))
@@ -94,6 +114,12 @@ class ProjectDetailsViewModel(private val repository: ProjectRepository) : Loada
 }
 
 private class PickedFile(val uri: Uri, val name: String, val mime: String?)
+
+private sealed interface MilestoneAction {
+    data class Edit(val milestone: Milestone?) : MilestoneAction
+
+    data class Delete(val milestone: Milestone) : MilestoneAction
+}
 
 private const val MAX_FILE_BYTES = 25L * 1024 * 1024
 
@@ -107,6 +133,7 @@ fun ProjectDetailsScreen(onNavigate: (String) -> Unit) {
     val isLeader = user?.role == Role.LEADER
     var replying by remember { mutableStateOf(false) }
     var picked by remember { mutableStateOf<PickedFile?>(null) }
+    var milestoneAction by remember { mutableStateOf<MilestoneAction?>(null) }
     val openFile = rememberSubmissionOpener()
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -150,6 +177,25 @@ fun ProjectDetailsScreen(onNavigate: (String) -> Unit) {
             },
         )
     }
+    when (val action = milestoneAction) {
+        is MilestoneAction.Edit ->
+            MilestoneDialog(
+                milestone = action.milestone,
+                onDismiss = { milestoneAction = null },
+                onSave = { name, due ->
+                    milestoneAction = null
+                    if (action.milestone == null) vm.addMilestone(name, due) else vm.updateMilestone(action.milestone.id, name, due)
+                },
+                onDelete = action.milestone?.let { m -> { milestoneAction = MilestoneAction.Delete(m) } },
+            )
+        is MilestoneAction.Delete ->
+            ConfirmDialog(stringResource(R.string.delete_milestone), stringResource(R.string.delete_milestone_confirm, action.milestone.name), stringResource(R.string.delete), { milestoneAction = null }, {
+                milestoneAction = null
+                vm.deleteMilestone(action.milestone.id)
+            }, danger = true)
+        null -> Unit
+    }
+
     LifecycleResumeEffect(vm) {
         if (vm.state.value is UiState.Success) vm.refresh()
         onPauseOrDispose {}
@@ -211,9 +257,13 @@ fun ProjectDetailsScreen(onNavigate: (String) -> Unit) {
         }
         item {
             GtCard {
-                SectionTitle(stringResource(R.string.milestones_deliverables))
-                Text(stringResource(R.string.milestones_hint), style = GtType.Caption, modifier = Modifier.padding(top = 2.dp, bottom = 14.dp))
-                MilestoneTimeline(data.milestones)
+                val canPlan = isLeader && project.status != ProjectStatus.COMPLETED
+                SectionTitle(stringResource(R.string.milestones_deliverables)) {
+                    if (canPlan) TextAction(stringResource(R.string.add_milestone), { milestoneAction = MilestoneAction.Edit(null) })
+                }
+                Text(stringResource(if (canPlan) R.string.milestones_hint_leader else R.string.milestones_hint), style = GtType.Caption, modifier = Modifier.padding(top = 2.dp, bottom = 14.dp))
+                if (data.milestones.isEmpty()) MutedText(stringResource(if (isLeader) R.string.no_milestones_leader else R.string.no_milestones_member))
+                MilestoneTimeline(data.milestones, onEdit = if (canPlan) ({ milestoneAction = MilestoneAction.Edit(it) }) else null)
             }
         }
         item {
@@ -241,6 +291,8 @@ fun ProjectDetailsScreen(onNavigate: (String) -> Unit) {
                             loading = busy,
                             icon = R.drawable.ic_upload,
                         )
+                    } else if (project.status == ProjectStatus.IN_PROGRESS && data.milestones.isEmpty()) {
+                        Text(stringResource(R.string.deliverables_need_milestone), style = GtType.Caption, modifier = Modifier.padding(top = 10.dp))
                     } else if (project.status != ProjectStatus.IN_PROGRESS && project.status != ProjectStatus.COMPLETED) {
                         Text(stringResource(R.string.deliverables_after_approval), style = GtType.Caption, modifier = Modifier.padding(top = 10.dp))
                     }

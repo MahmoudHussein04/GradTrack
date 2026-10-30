@@ -44,6 +44,7 @@ import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -411,6 +412,7 @@ fun TimelineRow(
     state: StepState,
     isLast: Boolean,
     pill: PillStyle? = null,
+    onEdit: (() -> Unit)? = null,
 ) {
     val (icon, tint) =
         when (state) {
@@ -431,6 +433,11 @@ fun TimelineRow(
                 if (!subtitle.isNullOrBlank()) Text(subtitle, style = GtType.Caption)
             }
             if (pill != null) Pill(pill)
+            if (onEdit != null) {
+                IconButton(onClick = onEdit, modifier = Modifier.padding(start = 4.dp).size(32.dp)) {
+                    Icon(painterResource(R.drawable.ic_edit), stringResource(R.string.edit_milestone), tint = Gt.TextSecondary, modifier = Modifier.size(18.dp))
+                }
+            }
         }
     }
 }

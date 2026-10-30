@@ -1,5 +1,6 @@
 package com.gradtrack.app.ui.review
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -29,6 +30,8 @@ import com.gradtrack.app.data.model.ReviewDecision
 import com.gradtrack.app.data.repository.ReviewRepository
 import com.gradtrack.app.ui.common.EventsEffect
 import com.gradtrack.app.ui.common.LoadableViewModel
+import com.gradtrack.app.ui.common.LocalContainer
+import com.gradtrack.app.ui.common.rememberFileOpener
 import com.gradtrack.app.ui.common.UiEvent
 import com.gradtrack.app.ui.common.appViewModel
 import com.gradtrack.app.ui.common.asDate
@@ -68,14 +71,16 @@ fun ProposalReviewScreen(proposalId: String) {
     var commentError by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<ReviewDecision?>(null) }
     val feedbackRequired = stringResource(R.string.error_feedback_required)
+    val files = LocalContainer.current.files
+    val open = rememberFileOpener()
     EventsEffect(vm)
 
     pending?.let { decision ->
         val (title, message) =
             when (decision) {
                 ReviewDecision.APPROVE -> R.string.approve_project to R.string.approve_confirm
-                ReviewDecision.CHANGES -> R.string.request_changes to R.string.changes_confirm
-                ReviewDecision.REJECT -> R.string.reject_proposal to R.string.reject_confirm
+                // Rejecting covers "needs changes" too: the team revises it or sends a new idea.
+                ReviewDecision.CHANGES, ReviewDecision.REJECT -> R.string.reject_proposal to R.string.reject_confirm
             }
         ConfirmDialog(stringResource(title), stringResource(message), stringResource(title), { pending = null }, {
             pending = null
@@ -123,11 +128,11 @@ fun ProposalReviewScreen(proposalId: String) {
                         SectionTitle(stringResource(R.string.tab_documents))
                         if (proposal.documents.isEmpty()) MutedText("—", Modifier.padding(top = 8.dp))
                         proposal.documents.forEach { document ->
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                            Row(Modifier.fillMaxWidth().clickable { open { files.proposal(proposalId, document.name) } }.padding(vertical = 10.dp)) {
                                 IconTile(R.drawable.ic_file)
                                 androidx.compose.foundation.layout.Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(document.name, style = GtType.Label)
-                                    document.sizeLabel?.let { Text(it, style = GtType.Caption) }
+                                    Text(document.sizeLabel ?: stringResource(R.string.tap_to_open), style = GtType.Caption)
                                 }
                             }
                         }
@@ -145,10 +150,7 @@ fun ProposalReviewScreen(proposalId: String) {
                         commentError = null
                     }, stringResource(R.string.field_feedback), error = commentError, helper = stringResource(R.string.feedback_helper), singleLine = false, minLines = 3)
                     PrimaryButton(stringResource(R.string.approve_project), { decide(ReviewDecision.APPROVE) }, Modifier.fillMaxWidth().padding(top = 12.dp), loading = busy)
-                    Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SecondaryButton(stringResource(R.string.request_changes), { decide(ReviewDecision.CHANGES) }, Modifier.weight(1f), enabled = !busy)
-                        SecondaryButton(stringResource(R.string.reject_proposal), { decide(ReviewDecision.REJECT) }, Modifier.weight(1f), enabled = !busy, danger = true)
-                    }
+                    SecondaryButton(stringResource(R.string.reject_proposal), { decide(ReviewDecision.REJECT) }, Modifier.fillMaxWidth().padding(top = 10.dp), enabled = !busy, danger = true)
                 }
             }
         }

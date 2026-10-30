@@ -73,6 +73,7 @@ import com.gradtrack.app.ui.project.RegisterProjectScreen
 import com.gradtrack.app.ui.review.ProposalListScreen
 import com.gradtrack.app.ui.review.ProposalReviewScreen
 import com.gradtrack.app.ui.review.SubmissionReviewScreen
+import com.gradtrack.app.ui.tasks.TaskDetailsScreen
 import com.gradtrack.app.ui.tasks.TasksScreen
 import com.gradtrack.app.ui.team.TeamScreen
 import com.gradtrack.app.ui.theme.Gt
@@ -94,8 +95,11 @@ object Routes {
     const val PROPOSAL_STATUS = "project/proposal"
     const val TEAM = "team"
     const val PROPOSAL_REVIEW = "proposals/{id}"
+    const val TASK = "tasks/{id}"
 
     fun proposalReview(id: String) = "proposals/$id"
+
+    fun task(id: String) = "tasks/$id"
 }
 
 private val studentTabs =
@@ -123,6 +127,7 @@ private fun titleOf(route: String?): Int? =
         Routes.PROPOSAL_STATUS -> R.string.title_proposal_status
         Routes.TEAM -> R.string.title_team
         Routes.PROPOSAL_REVIEW -> R.string.title_proposal_review
+        Routes.TASK -> R.string.title_task
         else -> null
     }
 
@@ -231,6 +236,7 @@ fun GradTrackApp(container: AppContainer) {
                         composable(Routes.PROPOSAL_REVIEW) { backStack ->
                             ProposalReviewScreen(proposalId = backStack.arguments?.getString("id").orEmpty())
                         }
+                        composable(Routes.TASK) { backStack -> TaskDetailsScreen(taskId = backStack.arguments?.getString("id").orEmpty()) }
                     }
                 }
 

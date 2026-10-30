@@ -1,5 +1,6 @@
 package com.gradtrack.app.ui.project
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,6 +25,7 @@ import com.gradtrack.app.ui.Routes
 import com.gradtrack.app.ui.common.EventsEffect
 import com.gradtrack.app.ui.common.LoadableViewModel
 import com.gradtrack.app.ui.common.LocalContainer
+import com.gradtrack.app.ui.common.rememberFileOpener
 import com.gradtrack.app.ui.common.appViewModel
 import com.gradtrack.app.ui.common.asDate
 import com.gradtrack.app.ui.common.pill
@@ -46,6 +48,8 @@ fun ProposalStatusScreen(onNavigate: (String) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
     val user by LocalContainer.current.session.currentUser.collectAsStateWithLifecycle()
+    val files = LocalContainer.current.files
+    val open = rememberFileOpener()
     EventsEffect(vm)
 
     LoadableScreen(state, onRetry = vm::load, refreshing = refreshing, onRefresh = vm::refresh) { data ->
@@ -68,7 +72,7 @@ fun ProposalStatusScreen(onNavigate: (String) -> Unit) {
                     modifier = Modifier.padding(top = 12.dp),
                 )
                 data.documentName?.let { name ->
-                    Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.padding(top = 12.dp).clickable { open { files.myProposal(name) } }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(painterResource(R.drawable.ic_file), null, tint = Gt.Primary, modifier = Modifier.size(20.dp))
                         Text(name, style = GtType.Label, modifier = Modifier.padding(start = 8.dp))
                     }

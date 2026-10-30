@@ -8,6 +8,7 @@ import com.gradtrack.app.data.model.FeedbackRequest
 import com.gradtrack.app.data.model.InviteRequest
 import com.gradtrack.app.data.model.LoginRequest
 import com.gradtrack.app.data.model.Milestone
+import com.gradtrack.app.data.model.MilestoneRequest
 import com.gradtrack.app.data.model.MyTeam
 import com.gradtrack.app.data.model.NotificationItem
 import com.gradtrack.app.data.model.Project
@@ -23,11 +24,11 @@ import com.gradtrack.app.data.model.SubmissionsOverview
 import com.gradtrack.app.data.model.SupervisorDashboard
 import com.gradtrack.app.data.model.TaskItem
 import com.gradtrack.app.data.model.TaskRequest
-import com.gradtrack.app.data.model.TaskStatusRequest
 import com.gradtrack.app.data.model.TeamInfo
 import com.gradtrack.app.data.model.UpdateProfileRequest
 import com.gradtrack.app.data.model.User
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -67,6 +68,18 @@ interface ApiService {
     @GET("projects/current/proposal")
     suspend fun proposalStatus(): ProposalStatusInfo
 
+    @Multipart
+    @POST("projects/current/proposal/file")
+    suspend fun uploadProposalFile(@Part file: MultipartBody.Part): Project
+
+    @Streaming
+    @GET("projects/current/proposal/file")
+    suspend fun myProposalFile(): ResponseBody
+
+    @Streaming
+    @GET("proposals/{id}/file")
+    suspend fun proposalFile(@Path("id") id: String): ResponseBody
+
     @POST("projects/current/feedback")
     suspend fun replyToFeedback(@Body request: FeedbackRequest): Feedback
 
@@ -77,6 +90,15 @@ interface ApiService {
     @Multipart
     @POST("milestones/{id}/submissions")
     suspend fun uploadDeliverable(@Path("id") milestoneId: String, @Part file: MultipartBody.Part): Submission
+
+    @POST("projects/current/milestones")
+    suspend fun createMilestone(@Body request: MilestoneRequest): Milestone
+
+    @PATCH("milestones/{id}")
+    suspend fun updateMilestone(@Path("id") id: String, @Body request: MilestoneRequest): Milestone
+
+    @DELETE("milestones/{id}")
+    suspend fun deleteMilestone(@Path("id") id: String)
 
     @Streaming
     @GET("submissions/{id}/file")
@@ -109,11 +131,30 @@ interface ApiService {
     @PATCH("tasks/{id}")
     suspend fun updateTask(@Path("id") id: String, @Body request: TaskRequest): TaskItem
 
-    @PATCH("tasks/{id}/status")
-    suspend fun updateTaskStatus(@Path("id") id: String, @Body request: TaskStatusRequest): TaskItem
+    @GET("tasks/{id}")
+    suspend fun task(@Path("id") id: String): TaskItem
 
-    @POST("tasks/{id}/cancel")
-    suspend fun cancelTask(@Path("id") id: String): TaskItem
+    @POST("tasks/{id}/start")
+    suspend fun startTask(@Path("id") id: String): TaskItem
+
+    @Multipart
+    @POST("tasks/{id}/attachment")
+    suspend fun uploadTaskAttachment(@Path("id") id: String, @Part file: MultipartBody.Part): TaskItem
+
+    @Streaming
+    @GET("tasks/{id}/attachment")
+    suspend fun taskAttachment(@Path("id") id: String): ResponseBody
+
+    @Multipart
+    @POST("tasks/{id}/solution")
+    suspend fun submitTaskSolution(@Path("id") id: String, @Part("note") note: RequestBody?, @Part file: MultipartBody.Part?): TaskItem
+
+    @Streaming
+    @GET("tasks/{id}/solution/file")
+    suspend fun taskSolutionFile(@Path("id") id: String): ResponseBody
+
+    @DELETE("tasks/{id}")
+    suspend fun deleteTask(@Path("id") id: String)
 
     @GET("notifications")
     suspend fun notifications(): List<NotificationItem>

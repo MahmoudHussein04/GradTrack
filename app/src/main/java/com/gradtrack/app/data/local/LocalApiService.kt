@@ -15,6 +15,7 @@ import com.gradtrack.app.data.model.InviteRequest
 import com.gradtrack.app.data.model.Invitation
 import com.gradtrack.app.data.model.LoginRequest
 import com.gradtrack.app.data.model.Milestone
+import com.gradtrack.app.data.model.MilestoneRequest
 import com.gradtrack.app.data.model.MilestoneStatus
 import com.gradtrack.app.data.model.MyTeam
 import com.gradtrack.app.data.model.NotificationItem
@@ -38,7 +39,6 @@ import com.gradtrack.app.data.model.SupervisorDashboard
 import com.gradtrack.app.data.model.TaskItem
 import com.gradtrack.app.data.model.TaskRequest
 import com.gradtrack.app.data.model.TaskStatus
-import com.gradtrack.app.data.model.TaskStatusRequest
 import com.gradtrack.app.data.model.TeamInfo
 import com.gradtrack.app.data.model.TeamMember
 import com.gradtrack.app.data.model.TimelineStep
@@ -52,6 +52,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import okio.Buffer
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -74,7 +75,7 @@ class LocalApiService(
     private val uploadsDir = File(context.filesDir, "uploads")
     private val gson = Gson()
     private val mutex = Mutex()
-    private val db: LocalDb = load().also { importAccounts(context, it) }
+    private val db: LocalDb = load().also { importAccounts(context, it) }.also { db -> db.projects.forEach { db.syncMilestones(it) } }.also { db -> db.dropSupervisorMilestoneNotices() }
 
     override suspend fun login(request: LoginRequest): AuthResponse =
         write {
@@ -213,7 +214,6 @@ class LocalApiService(
             }
             if (existing == null) {
                 projects += project
-                createMilestones(project)
                 notify(listOf(supervisor.id), NotificationType.PROPOSAL, "New proposal to review", "${team.name} submitted \"${project.title}\".")
                 notify(team.memberIds - me.id, NotificationType.PROPOSAL, "Proposal submitted", "\"${project.title}\" was sent to ${supervisor.fullName}.")
             } else if (wasDecided) {
@@ -243,6 +243,28 @@ class LocalApiService(
                 feedback = feedbackOf(project.id),
                 documentName = project.proposalFileName,
             )
+        }
+
+    override suspend fun uploadProposalFile(file: MultipartBody.Part): Project =
+        write {
+            val me = requireRole(Role.LEADER, "Only the team leader can upload the proposal.")
+            val project = teamOf(me.id)?.let { projectOf(it.id) } ?: fail(404, "Register the project first.")
+            if (project.status != ProjectStatus.UNDER_REVIEW) fail(409, "The proposal can only be changed while it is being sent for review.")
+            project.proposalFileName = storeUpload(file, "${project.id}-proposal", "proposal.pdf")
+            toModel(project)
+        }
+
+    override suspend fun myProposalFile(): ResponseBody =
+        read {
+            val project = teamOf(me().id)?.let { projectOf(it.id) } ?: fail(404, "Your team has no project yet.")
+            storedUpload("${project.id}-proposal")
+        }
+
+    override suspend fun proposalFile(id: String): ResponseBody =
+        read {
+            val me = requireRole(Role.SUPERVISOR, "Only supervisors review proposals.")
+            val project = projects.firstOrNull { it.id == id && it.supervisorId == me.id } ?: fail(404, "Proposal not found.")
+            storedUpload("${project.id}-proposal")
         }
 
     override suspend fun replyToFeedback(request: FeedbackRequest): Feedback =
@@ -280,6 +302,43 @@ class LocalApiService(
             submissions += record
             notify(listOf(project.supervisorId), NotificationType.SUBMISSION, "New submission", "${teamName(project.teamId)} submitted $name for ${milestone.name}.")
             toModel(record)
+        }
+
+    override suspend fun createMilestone(request: MilestoneRequest): Milestone =
+        write {
+            val (me, project) = editableProject()
+            val (name, due) = validMilestone(project, request, null)
+            val order = (milestones.filter { it.projectId == project.id }.maxOfOrNull { it.order } ?: -1) + 1
+            val record = MilestoneRecord(newId("m"), project.id, name, due, order = order)
+            milestones += record
+            syncMilestones(project)
+            notifyMilestone(project, me, "Milestone added", "$name · due $due")
+            record.toModel()
+        }
+
+    override suspend fun updateMilestone(id: String, request: MilestoneRequest): Milestone =
+        write {
+            val (me, project) = editableProject()
+            val record = milestones.firstOrNull { it.id == id && it.projectId == project.id } ?: fail(404, "Milestone not found.")
+            if (record.status == MilestoneStatus.COMPLETED) fail(409, "Completed milestones can't be changed.")
+            val (name, due) = validMilestone(project, request, record)
+            val moved = record.dueDate != due
+            record.name = name
+            record.dueDate = due
+            syncMilestones(project)
+            notifyMilestone(project, me, if (moved) "Deadline changed" else "Milestone renamed", "$name · due $due")
+            record.toModel()
+        }
+
+    override suspend fun deleteMilestone(id: String): Unit =
+        write {
+            val (me, project) = editableProject()
+            val record = milestones.firstOrNull { it.id == id && it.projectId == project.id } ?: fail(404, "Milestone not found.")
+            if (record.status == MilestoneStatus.COMPLETED) fail(409, "Completed milestones can't be deleted.")
+            if (submissions.any { it.milestoneId == id }) fail(409, "This milestone already has submissions, so it can't be deleted.")
+            milestones.remove(record)
+            syncMilestones(project)
+            notifyMilestone(project, me, "Milestone removed", record.name)
         }
 
     override suspend fun submissionFile(submissionId: String): ResponseBody =
@@ -374,8 +433,10 @@ class LocalApiService(
 
     override suspend fun tasks(): List<TaskItem> =
         read {
-            val team = teamOf(me().id) ?: return@read emptyList()
-            tasks.filter { it.teamId == team.id && it.status != TaskStatus.CANCELLED }.sortedWith(compareBy({ it.status == TaskStatus.DONE }, { it.dueDate ?: "9999" })).map { toModel(it) }
+            val me = me()
+            val team = teamOf(me.id) ?: return@read emptyList()
+            // The leader sees the whole board; everyone else sees only what is assigned to them.
+            tasks.filter { it.teamId == team.id && it.status != TaskStatus.CANCELLED && (me.id == team.leaderId || it.assigneeId == me.id) }.sortedWith(compareBy({ it.status == TaskStatus.DONE }, { it.dueDate ?: "9999" })).map { toModel(it) }
         }
 
     override suspend fun createTask(request: TaskRequest): TaskItem =
@@ -405,27 +466,64 @@ class LocalApiService(
             toModel(task)
         }
 
-    override suspend fun updateTaskStatus(id: String, request: TaskStatusRequest): TaskItem =
+    override suspend fun task(id: String): TaskItem = read { toModel(visibleTask(id).second) }
+
+    override suspend fun startTask(id: String): TaskItem =
         write {
-            val me = me()
-            val team = teamOf(me.id) ?: fail(404, "You have no team.")
-            val task = tasks.firstOrNull { it.id == id && it.teamId == team.id } ?: fail(404, "Task not found.")
-            if (me.id != team.leaderId && task.assigneeId != me.id) fail(403, "You can only update tasks assigned to you.")
-            task.status = request.status
-            task.completedAt = if (request.status == TaskStatus.DONE) LocalDate.now().toString() else null
-            if (request.status == TaskStatus.DONE && me.id != team.leaderId) {
-                notify(listOf(team.leaderId), NotificationType.TASK, "Task completed", "${me.fullName} completed \"${task.title}\".")
-            }
+            val (me, task) = visibleTask(id)
+            if (task.assigneeId != me.id) fail(403, "Only the person assigned to this task can start it.")
+            if (task.status == TaskStatus.TODO) task.status = TaskStatus.IN_PROGRESS
             toModel(task)
         }
 
-    override suspend fun cancelTask(id: String): TaskItem =
+    override suspend fun uploadTaskAttachment(id: String, file: MultipartBody.Part): TaskItem =
         write {
-            val me = requireRole(Role.LEADER, "Only the team leader can cancel tasks.")
+            val me = requireRole(Role.LEADER, "Only the team leader can attach files to tasks.")
             val team = teamOf(me.id) ?: fail(404, "You have no team.")
             val task = tasks.firstOrNull { it.id == id && it.teamId == team.id } ?: fail(404, "Task not found.")
-            task.status = TaskStatus.CANCELLED
+            task.attachmentName = storeUpload(file, "${task.id}-brief", "attachment")
             toModel(task)
+        }
+
+    override suspend fun taskAttachment(id: String): ResponseBody =
+        read {
+            val task = visibleTask(id).second
+            if (task.attachmentName == null) fail(404, "This task has no attachment.")
+            storedUpload("${task.id}-brief")
+        }
+
+    override suspend fun submitTaskSolution(id: String, note: RequestBody?, file: MultipartBody.Part?): TaskItem =
+        write {
+            val (me, task) = visibleTask(id)
+            if (task.assigneeId != me.id) fail(403, "Only the person assigned to this task can submit a solution.")
+            if (task.status == TaskStatus.DONE) fail(409, "A solution was already submitted for this task.")
+            val text = note?.let { Buffer().also(it::writeTo).readUtf8().trim() }?.ifEmpty { null }
+            if (text == null && file == null) fail(422, "Add a note or attach a file with your solution.")
+            task.solutionNote = text
+            task.solutionFileName = file?.let { storeUpload(it, "${task.id}-solution", "solution") }
+            task.status = TaskStatus.DONE
+            task.completedAt = LocalDate.now().toString()
+            val team = teams.first { it.id == task.teamId }
+            if (me.id != team.leaderId) notify(listOf(team.leaderId), NotificationType.TASK, "Task completed", "${me.fullName} submitted a solution for \"${task.title}\".")
+            toModel(task)
+        }
+
+    override suspend fun taskSolutionFile(id: String): ResponseBody =
+        read {
+            val task = visibleTask(id).second
+            if (task.solutionFileName == null) fail(404, "No file was submitted with this solution.")
+            storedUpload("${task.id}-solution")
+        }
+
+    override suspend fun deleteTask(id: String): Unit =
+        write {
+            val me = requireRole(Role.LEADER, "Only the team leader can delete tasks.")
+            val team = teamOf(me.id) ?: fail(404, "You have no team.")
+            val task = tasks.firstOrNull { it.id == id && it.teamId == team.id } ?: fail(404, "Task not found.")
+            tasks.remove(task)
+            File(uploadsDir, "${task.id}-brief").delete()
+            File(uploadsDir, "${task.id}-solution").delete()
+            if (task.assigneeId != me.id) notify(listOf(task.assigneeId), NotificationType.TASK, "Task removed", "${me.fullName} deleted \"${task.title}\".")
         }
 
     override suspend fun notifications(): List<NotificationItem> =
@@ -485,7 +583,7 @@ class LocalApiService(
                     ReviewDecision.CHANGES -> ProjectStatus.CHANGES_REQUESTED
                     ReviewDecision.REJECT -> ProjectStatus.REJECTED
                 }
-            if (request.decision == ReviewDecision.APPROVE) completeMilestone(project, milestonesOf(project.id).first())
+            syncMilestones(project)
             request.comment?.takeIf { it.isNotBlank() }?.let { feedback += FeedbackRecord(newId("f"), project.id, me.id, it.trim(), now) }
             val verdict =
                 when (request.decision) {
@@ -527,24 +625,53 @@ class LocalApiService(
             toModel(submission)
         }
 
-    private fun LocalDb.createMilestones(project: ProjectRecord) {
-        val start = LocalDate.now()
-        STAGES.forEachIndexed { index, (name, days) ->
-            milestones += MilestoneRecord(
-                id = newId("m"),
-                projectId = project.id,
-                name = name,
-                dueDate = start.plusDays(days).toString(),
-                status = if (index == 0) MilestoneStatus.IN_PROGRESS else MilestoneStatus.UPCOMING,
-                order = index,
-            )
+    private fun LocalDb.editableProject(): Pair<User, ProjectRecord> {
+        val me = requireRole(Role.LEADER, "Only the team leader can manage milestones.")
+        val project = teamOf(me.id)?.let { projectOf(it.id) } ?: fail(404, "Register your project first.")
+        if (project.status == ProjectStatus.COMPLETED) fail(409, "The project is completed, so its milestones are final.")
+        return me to project
+    }
+
+    private fun LocalDb.validMilestone(project: ProjectRecord, request: MilestoneRequest, editing: MilestoneRecord?): Pair<String, String> {
+        val name = request.name.trim()
+        if (name.isEmpty()) fail(422, "Give the milestone a name.")
+        if (name.length > 60) fail(422, "Keep the name under 60 characters.")
+        val due = runCatching { LocalDate.parse(request.dueDate) }.getOrNull()?.toString() ?: fail(422, "Pick a deadline.")
+        val others = milestonesOf(project.id).filter { it.id != editing?.id }
+        if (others.any { it.name.equals(name, ignoreCase = true) }) fail(409, "Another milestone already has this name.")
+        if (editing?.dueDate == due) return name to due
+        if (due < LocalDate.now().toString()) fail(422, "The deadline can't be in the past.")
+        val lastDone = others.filter { it.status == MilestoneStatus.COMPLETED }.maxOfOrNull { it.dueDate }
+        if (lastDone != null && due <= lastDone) fail(422, "The deadline must come after the last completed milestone ($lastDone).")
+        val waiting = milestonesOf(project.id).firstOrNull { m -> m.status == MilestoneStatus.IN_PROGRESS && submissions.any { it.milestoneId == m.id && it.status == SubmissionStatus.REVIEW } }
+        if (waiting != null) {
+            val jumpsAhead = if (waiting.id == editing?.id) others.any { it.status != MilestoneStatus.COMPLETED && it.dueDate <= due } else due < waiting.dueDate
+            if (jumpsAhead) fail(409, "${waiting.name} is waiting for the supervisor's review, so it has to stay the current milestone.")
+        }
+        return name to due
+    }
+
+    private fun LocalDb.syncMilestones(project: ProjectRecord) {
+        milestonesOf(project.id).filter { it.status != MilestoneStatus.COMPLETED }.forEachIndexed { index, milestone ->
+            milestone.status = if (index == 0 && project.status == ProjectStatus.IN_PROGRESS) MilestoneStatus.IN_PROGRESS else MilestoneStatus.UPCOMING
         }
     }
 
     private fun LocalDb.completeMilestone(project: ProjectRecord, milestone: MilestoneRecord) {
         milestone.status = MilestoneStatus.COMPLETED
-        val next = milestonesOf(project.id).firstOrNull { it.status == MilestoneStatus.UPCOMING }
-        if (next != null) next.status = MilestoneStatus.IN_PROGRESS else project.status = ProjectStatus.COMPLETED
+        if (milestonesOf(project.id).all { it.status == MilestoneStatus.COMPLETED }) project.status = ProjectStatus.COMPLETED else syncMilestones(project)
+    }
+
+    private fun LocalDb.notifyMilestone(project: ProjectRecord, me: User, title: String, body: String) {
+        val team = teams.first { it.id == project.teamId }
+        // Stage planning is the team's business; the supervisor hears about submissions, not schedule edits.
+        notify(team.memberIds - me.id, NotificationType.DEADLINE, title, "${team.name}: $body")
+    }
+
+    /** Earlier builds also sent milestone edits to the supervisor; clear those out of their inbox. */
+    private fun LocalDb.dropSupervisorMilestoneNotices() {
+        val supervisors = projects.map { it.supervisorId }.toSet()
+        notifications.removeAll { it.type == NotificationType.DEADLINE && it.userId in supervisors }
     }
 
     private fun LocalDb.notify(userIds: Collection<String>, type: NotificationType, title: String, body: String) {
@@ -569,7 +696,7 @@ class LocalApiService(
 
     private fun LocalDb.projectOf(teamId: String) = projects.firstOrNull { it.teamId == teamId }
 
-    private fun LocalDb.milestonesOf(projectId: String) = milestones.filter { it.projectId == projectId }.sortedBy { it.order }
+    private fun LocalDb.milestonesOf(projectId: String) = milestones.filter { it.projectId == projectId }.sortedWith(compareBy({ it.dueDate }, { it.order }))
 
     private fun LocalDb.progressOf(project: ProjectRecord): Int {
         val list = milestonesOf(project.id)
@@ -647,7 +774,32 @@ class LocalApiService(
     }
 
     private fun LocalDb.toModel(task: TaskRecord) =
-        TaskItem(task.id, task.title, task.description, task.assigneeId, userName(task.assigneeId).substringBefore(' '), task.status, task.dueDate, task.completedAt)
+        TaskItem(
+            task.id, task.title, task.description, task.assigneeId, userName(task.assigneeId).substringBefore(' '), task.status, task.dueDate, task.completedAt,
+            task.attachmentName, task.solutionNote, task.solutionFileName,
+        )
+
+    /** The leader can open any task on the team's board; anyone else only the tasks assigned to them. */
+    private fun LocalDb.visibleTask(id: String): Pair<User, TaskRecord> {
+        val me = me()
+        val team = teamOf(me.id) ?: fail(404, "You have no team.")
+        val task = tasks.firstOrNull { it.id == id && it.teamId == team.id && it.status != TaskStatus.CANCELLED } ?: fail(404, "Task not found.")
+        if (me.id != team.leaderId && task.assigneeId != me.id) fail(403, "This task is assigned to someone else.")
+        return me to task
+    }
+
+    private fun storeUpload(file: MultipartBody.Part, key: String, fallback: String): String {
+        val name = file.headers?.get("Content-Disposition")?.substringAfter("filename=\"", "")?.substringBefore('"')?.ifBlank { null } ?: fallback
+        uploadsDir.mkdirs()
+        File(uploadsDir, key).writeBytes(Buffer().also { file.body.writeTo(it) }.readByteArray())
+        return name
+    }
+
+    private fun storedUpload(key: String): ResponseBody {
+        val stored = File(uploadsDir, key)
+        if (!stored.exists()) fail(404, "This file was never uploaded or is no longer available. Ask the team to upload it again.")
+        return stored.readBytes().toResponseBody("application/octet-stream".toMediaType())
+    }
 
     private fun MilestoneRecord.toModel() = Milestone(id, name, dueDate, status)
 
@@ -766,7 +918,5 @@ class LocalApiService(
         const val MAX_MEMBERS = 4
         val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$")
         val UNIVERSITY_ID = Regex("^\\d{5,12}$")
-
-        val STAGES = listOf("Proposal" to 14L, "Design" to 45L, "Development" to 90L, "Testing" to 120L, "Defense" to 150L)
     }
 }

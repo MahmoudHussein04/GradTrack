@@ -30,7 +30,7 @@ import com.gradtrack.app.ui.theme.GtType
 import com.gradtrack.app.ui.theme.Tone
 
 @Composable
-fun MilestoneTimeline(milestones: List<Milestone>) {
+fun MilestoneTimeline(milestones: List<Milestone>, onEdit: ((Milestone) -> Unit)? = null) {
     milestones.forEachIndexed { index, milestone ->
         TimelineRow(
             title = milestone.name,
@@ -43,6 +43,7 @@ fun MilestoneTimeline(milestones: List<Milestone>) {
                 },
             isLast = index == milestones.lastIndex,
             pill = milestone.status.pill(),
+            onEdit = if (onEdit != null && milestone.status != MilestoneStatus.COMPLETED) ({ onEdit(milestone) }) else null,
         )
     }
 }

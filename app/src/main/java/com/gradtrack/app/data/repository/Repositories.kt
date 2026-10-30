@@ -9,6 +9,8 @@ import com.gradtrack.app.data.model.Feedback
 import com.gradtrack.app.data.model.FeedbackRequest
 import com.gradtrack.app.data.model.InviteRequest
 import com.gradtrack.app.data.model.LoginRequest
+import com.gradtrack.app.data.model.Milestone
+import com.gradtrack.app.data.model.MilestoneRequest
 import com.gradtrack.app.data.model.MyTeam
 import com.gradtrack.app.data.model.NotificationItem
 import com.gradtrack.app.data.model.Project
@@ -26,8 +28,6 @@ import com.gradtrack.app.data.model.SubmissionsOverview
 import com.gradtrack.app.data.model.SupervisorDashboard
 import com.gradtrack.app.data.model.TaskItem
 import com.gradtrack.app.data.model.TaskRequest
-import com.gradtrack.app.data.model.TaskStatus
-import com.gradtrack.app.data.model.TaskStatusRequest
 import com.gradtrack.app.data.model.TeamInfo
 import com.gradtrack.app.data.model.UpdateProfileRequest
 import com.gradtrack.app.data.model.User
@@ -36,11 +36,14 @@ import com.gradtrack.app.data.safeCall
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
 class UploadFile(val name: String, val mimeType: String?, val bytes: ByteArray)
+
+private fun UploadFile.part() = MultipartBody.Part.createFormData("file", name, bytes.toRequestBody((mimeType ?: "application/octet-stream").toMediaTypeOrNull()))
 
 class AuthRepository(private val api: ApiService, private val session: SessionStore) {
     val currentUser: User? get() = session.user
@@ -76,16 +79,23 @@ class ProjectRepository(private val api: ApiService) {
 
     suspend fun register(request: RegisterProjectRequest): Resource<Project> = safeCall { api.registerProject(request) }
 
+    suspend fun uploadProposal(file: UploadFile): Resource<Project> = safeCall { api.uploadProposalFile(file.part()) }
+
     suspend fun proposalStatus(): Resource<ProposalStatusInfo> = safeCall { api.proposalStatus() }
 
     suspend fun reply(body: String): Resource<Feedback> = safeCall { api.replyToFeedback(FeedbackRequest(body.trim())) }
 
     suspend fun submissions(): Resource<List<Submission>> = safeCall { api.submissions() }
 
+    suspend fun addMilestone(name: String, dueDate: String): Resource<Milestone> = safeCall { api.createMilestone(MilestoneRequest(name.trim(), dueDate)) }
+
+    suspend fun updateMilestone(id: String, name: String, dueDate: String): Resource<Milestone> = safeCall { api.updateMilestone(id, MilestoneRequest(name.trim(), dueDate)) }
+
+    suspend fun deleteMilestone(id: String): Resource<Unit> = safeCall { api.deleteMilestone(id) }
+
     suspend fun upload(milestoneId: String, file: UploadFile): Resource<Submission> =
         safeCall {
-            val body = file.bytes.toRequestBody((file.mimeType ?: "application/octet-stream").toMediaTypeOrNull())
-            api.uploadDeliverable(milestoneId, MultipartBody.Part.createFormData("file", file.name, body))
+            api.uploadDeliverable(milestoneId, file.part())
         }
 }
 
@@ -110,9 +120,16 @@ class TaskRepository(private val api: ApiService) {
 
     suspend fun update(id: String, request: TaskRequest): Resource<TaskItem> = safeCall { api.updateTask(id, request) }
 
-    suspend fun setStatus(id: String, status: TaskStatus): Resource<TaskItem> = safeCall { api.updateTaskStatus(id, TaskStatusRequest(status)) }
+    suspend fun task(id: String): Resource<TaskItem> = safeCall { api.task(id) }
 
-    suspend fun cancel(id: String): Resource<TaskItem> = safeCall { api.cancelTask(id) }
+    suspend fun start(id: String): Resource<TaskItem> = safeCall { api.startTask(id) }
+
+    suspend fun attach(id: String, file: UploadFile): Resource<TaskItem> = safeCall { api.uploadTaskAttachment(id, file.part()) }
+
+    suspend fun submit(id: String, note: String, file: UploadFile?): Resource<TaskItem> =
+        safeCall { api.submitTaskSolution(id, note.trim().ifEmpty { null }?.toRequestBody("text/plain".toMediaTypeOrNull()), file?.part()) }
+
+    suspend fun delete(id: String): Resource<Unit> = safeCall { api.deleteTask(id) }
 }
 
 class NotificationRepository(private val api: ApiService) {
@@ -136,12 +153,22 @@ class ReviewRepository(private val api: ApiService) {
 }
 
 class FileRepository(private val api: ApiService, private val cacheDir: File) {
-    suspend fun submissionFile(submission: Submission): Resource<File> =
+    suspend fun submissionFile(submission: Submission): Resource<File> = download(submission.id, submission.fileName) { api.submissionFile(submission.id) }
+
+    suspend fun taskAttachment(task: TaskItem): Resource<File> = download("${task.id}-brief", task.attachmentName.orEmpty()) { api.taskAttachment(task.id) }
+
+    suspend fun taskSolution(task: TaskItem): Resource<File> = download("${task.id}-solution", task.solutionFileName.orEmpty()) { api.taskSolutionFile(task.id) }
+
+    suspend fun myProposal(name: String): Resource<File> = download("proposal-mine", name) { api.myProposalFile() }
+
+    suspend fun proposal(projectId: String, name: String): Resource<File> = download("proposal-$projectId", name) { api.proposalFile(projectId) }
+
+    private suspend fun download(key: String, name: String, fetch: suspend () -> ResponseBody): Resource<File> =
         safeCall {
-            val body = api.submissionFile(submission.id)
+            val body = fetch()
             withContext(Dispatchers.IO) {
-                val dir = File(cacheDir, submission.id).apply { mkdirs() }
-                File(dir, submission.fileName.substringAfterLast('/')).apply { body.byteStream().use { input -> outputStream().use { input.copyTo(it) } } }
+                val dir = File(cacheDir, key).apply { mkdirs() }
+                File(dir, name.substringAfterLast('/').ifBlank { "file" }).apply { body.byteStream().use { input -> outputStream().use { input.copyTo(it) } } }
             }
         }
 }

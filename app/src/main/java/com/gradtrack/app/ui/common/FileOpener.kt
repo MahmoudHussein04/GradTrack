@@ -11,18 +11,26 @@ import androidx.core.content.FileProvider
 import com.gradtrack.app.R
 import com.gradtrack.app.data.Resource
 import com.gradtrack.app.data.model.Submission
+import java.io.File
 import kotlinx.coroutines.launch
 
 @Composable
 fun rememberSubmissionOpener(): (Submission) -> Unit {
+    val files = LocalContainer.current.files
+    val open = rememberFileOpener()
+    return { submission -> open { files.submissionFile(submission) } }
+}
+
+/** Downloads a file with [fetch] and hands it to whichever app can view it. */
+@Composable
+fun rememberFileOpener(): (fetch: suspend () -> Resource<File>) -> Unit {
     val context = LocalContext.current
     val resources = LocalResources.current
-    val files = LocalContainer.current.files
     val snackbar = LocalSnackbar.current
     val scope = rememberCoroutineScope()
-    return { submission ->
+    return { fetch ->
         scope.launch {
-            when (val result = files.submissionFile(submission)) {
+            when (val result = fetch()) {
                 is Resource.Failure -> snackbar.showSnackbar(result.error.message(context))
                 is Resource.Success -> {
                     val file = result.data

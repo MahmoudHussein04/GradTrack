@@ -1,5 +1,6 @@
 package com.gradtrack.app.ui.tasks
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,7 +36,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gradtrack.app.R
 import com.gradtrack.app.data.Resource
@@ -46,6 +49,7 @@ import com.gradtrack.app.data.model.TaskStatus
 import com.gradtrack.app.data.model.TeamMember
 import com.gradtrack.app.data.repository.TaskRepository
 import com.gradtrack.app.data.repository.TeamRepository
+import com.gradtrack.app.data.repository.UploadFile
 import com.gradtrack.app.ui.Routes
 import com.gradtrack.app.ui.common.EventsEffect
 import com.gradtrack.app.ui.common.LoadableViewModel
@@ -57,6 +61,7 @@ import com.gradtrack.app.ui.common.appViewModel
 import com.gradtrack.app.ui.common.asDate
 import com.gradtrack.app.ui.common.asShortDate
 import com.gradtrack.app.ui.common.pill
+import com.gradtrack.app.ui.common.rememberFilePicker
 import com.gradtrack.app.ui.components.ConfirmDialog
 import com.gradtrack.app.ui.components.DropdownField
 import com.gradtrack.app.ui.components.EmptyState
@@ -99,25 +104,26 @@ class TasksViewModel(
         _filter.value = status
     }
 
-    fun setStatus(task: TaskItem, status: TaskStatus) = act({ repository.setStatus(task.id, status) }) { updated -> replace(updated) }
-
-    fun create(request: TaskRequest) =
-        act({ repository.create(request) }) { created ->
+    fun create(request: TaskRequest, file: UploadFile?) =
+        act({ repository.create(request).attaching(file) }) { created ->
             patch { it.copy(tasks = listOf(created) + it.tasks) }
             send(UiEvent.Message(R.string.task_created))
         }
 
-    fun update(id: String, request: TaskRequest) =
-        act({ repository.update(id, request) }) { updated ->
+    fun update(id: String, request: TaskRequest, file: UploadFile?) =
+        act({ repository.update(id, request).attaching(file) }) { updated ->
             replace(updated)
             send(UiEvent.Message(R.string.task_saved))
         }
 
-    fun cancel(task: TaskItem) =
-        act({ repository.cancel(task.id) }) {
+    fun delete(task: TaskItem) =
+        act({ repository.delete(task.id) }) {
             patch { data -> data.copy(tasks = data.tasks.filterNot { it.id == task.id }) }
-            send(UiEvent.Message(R.string.task_cancelled_msg))
+            send(UiEvent.Message(R.string.task_deleted_msg))
         }
+
+    private suspend fun Resource<TaskItem>.attaching(file: UploadFile?): Resource<TaskItem> =
+        if (this is Resource.Success && file != null) repository.attach(data.id, file) else this
 
     private fun replace(updated: TaskItem) = patch { data -> data.copy(tasks = data.tasks.map { if (it.id == updated.id) updated else it }) }
 }
@@ -125,7 +131,7 @@ class TasksViewModel(
 private sealed interface TaskDialog {
     data class Edit(val task: TaskItem?) : TaskDialog
 
-    data class Cancel(val task: TaskItem) : TaskDialog
+    data class Delete(val task: TaskItem) : TaskDialog
 }
 
 @Composable
@@ -139,17 +145,22 @@ fun TasksScreen(onNavigate: (String) -> Unit) {
     var dialog by remember { mutableStateOf<TaskDialog?>(null) }
     EventsEffect(vm)
 
+    LifecycleResumeEffect(vm) {
+        if (vm.state.value is UiState.Success) vm.refresh()
+        onPauseOrDispose {}
+    }
+
     val members = (state as? UiState.Success)?.data?.members.orEmpty()
     when (val d = dialog) {
         is TaskDialog.Edit ->
-            TaskEditDialog(d.task, members, onDismiss = { dialog = null }) { request ->
+            TaskEditDialog(d.task, members, onDismiss = { dialog = null }) { request, file ->
                 dialog = null
-                if (d.task == null) vm.create(request) else vm.update(d.task.id, request)
+                if (d.task == null) vm.create(request, file) else vm.update(d.task.id, request, file)
             }
-        is TaskDialog.Cancel ->
-            ConfirmDialog(stringResource(R.string.cancel_task), stringResource(R.string.cancel_task_confirm, d.task.title), stringResource(R.string.cancel_task), { dialog = null }, {
+        is TaskDialog.Delete ->
+            ConfirmDialog(stringResource(R.string.delete_task), stringResource(R.string.delete_task_confirm, d.task.title), stringResource(R.string.delete), { dialog = null }, {
                 dialog = null
-                vm.cancel(d.task)
+                vm.delete(d.task)
             }, danger = true)
         null -> Unit
     }
@@ -202,11 +213,10 @@ fun TasksScreen(onNavigate: (String) -> Unit) {
                             shown.forEach { task ->
                                 TaskRow(
                                     task = task,
-                                    canChange = isLeader || task.assigneeId == user?.id,
                                     isLeader = isLeader,
-                                    onStatus = { if (task.status != it) vm.setStatus(task, it) },
+                                    onOpen = { onNavigate(Routes.task(task.id)) },
                                     onEdit = { dialog = TaskDialog.Edit(task) },
-                                    onCancel = { dialog = TaskDialog.Cancel(task) },
+                                    onDelete = { dialog = TaskDialog.Delete(task) },
                                 )
                             }
                     }
@@ -232,49 +242,51 @@ fun TasksScreen(onNavigate: (String) -> Unit) {
 @Composable
 private fun TaskRow(
     task: TaskItem,
-    canChange: Boolean,
     isLeader: Boolean,
-    onStatus: (TaskStatus) -> Unit,
+    onOpen: () -> Unit,
     onEdit: () -> Unit,
-    onCancel: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     val done = task.status == TaskStatus.DONE
     var menu by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { onStatus(if (done) TaskStatus.TODO else TaskStatus.DONE) }, enabled = canChange) {
-            Icon(
-                painterResource(if (done) R.drawable.ic_check_circle else R.drawable.ic_circle_outline),
-                stringResource(R.string.mark_done),
-                tint = if (done) Gt.Primary else Gt.TextSecondary,
-            )
-        }
+    // Status moves on its own: opening the task starts it and submitting a solution finishes it.
+    Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            painterResource(if (done) R.drawable.ic_check_circle else if (task.status == TaskStatus.IN_PROGRESS) R.drawable.ic_clock else R.drawable.ic_circle_outline),
+            null,
+            tint = if (done) Gt.Primary else Gt.TextSecondary,
+            modifier = Modifier.padding(12.dp),
+        )
         Column(Modifier.weight(1f).padding(start = 4.dp)) {
             Text(task.title, style = GtType.Label.copy(textDecoration = if (done) TextDecoration.LineThrough else null))
             Text(
-                if (done) stringResource(R.string.task_meta_done, task.assigneeName, task.completedAt.asShortDate()) else stringResource(R.string.task_meta_due, task.assigneeName, task.dueDate?.asShortDate() ?: "—"),
+                // Members only ever see their own tasks, so who it's assigned to only matters to the leader.
+                when {
+                    done && isLeader -> stringResource(R.string.task_meta_done, task.assigneeName, task.completedAt.asShortDate())
+                    done -> stringResource(R.string.task_done_on, task.completedAt.asShortDate())
+                    isLeader -> stringResource(R.string.task_meta_due, task.assigneeName, task.dueDate?.asShortDate() ?: "—")
+                    else -> stringResource(R.string.task_due, task.dueDate?.asShortDate() ?: "—")
+                },
                 style = GtType.Caption,
             )
-            Pill(task.status.pill(), Modifier.padding(top = 6.dp))
+            Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Pill(task.status.pill())
+                if (task.attachmentName != null || task.solutionFileName != null) {
+                    Icon(painterResource(R.drawable.ic_file), stringResource(R.string.has_files), tint = Gt.TextSecondary, modifier = Modifier.padding(start = 8.dp).size(16.dp))
+                }
+            }
         }
-        Box {
+        if (isLeader) Box {
             IconButton(onClick = { menu = true }) { Icon(painterResource(R.drawable.ic_more), stringResource(R.string.task_options), tint = Gt.TextSecondary) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                listOf(TaskStatus.TODO to R.string.task_todo, TaskStatus.IN_PROGRESS to R.string.task_in_progress, TaskStatus.DONE to R.string.task_done).forEach { (status, label) ->
-                    DropdownMenuItem(text = { Text(stringResource(label)) }, enabled = canChange, onClick = {
-                        menu = false
-                        onStatus(status)
-                    })
-                }
-                if (isLeader) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.edit_task)) }, onClick = {
-                        menu = false
-                        onEdit()
-                    })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.cancel_task), color = Gt.Error) }, onClick = {
-                        menu = false
-                        onCancel()
-                    })
-                }
+                DropdownMenuItem(text = { Text(stringResource(R.string.edit_task)) }, onClick = {
+                    menu = false
+                    onEdit()
+                })
+                DropdownMenuItem(text = { Text(stringResource(R.string.delete_task), color = Gt.Error) }, onClick = {
+                    menu = false
+                    onDelete()
+                })
             }
         }
     }
@@ -286,13 +298,15 @@ private fun TaskEditDialog(
     task: TaskItem?,
     members: List<TeamMember>,
     onDismiss: () -> Unit,
-    onSave: (TaskRequest) -> Unit,
+    onSave: (TaskRequest, UploadFile?) -> Unit,
 ) {
     var title by remember { mutableStateOf(task?.title.orEmpty()) }
     var description by remember { mutableStateOf(task?.description.orEmpty()) }
     var assignee by remember { mutableStateOf(members.firstOrNull { it.id == task?.assigneeId }) }
     var due by remember { mutableStateOf(task?.dueDate) }
     var picking by remember { mutableStateOf(false) }
+    var attachment by remember { mutableStateOf<UploadFile?>(null) }
+    val pickAttachment = rememberFilePicker { attachment = it }
     var titleError by remember { mutableStateOf<String?>(null) }
     var assigneeError by remember { mutableStateOf<String?>(null) }
     val required = stringResource(R.string.error_required)
@@ -331,6 +345,17 @@ private fun TaskEditDialog(
                         TextButton(onClick = { picking = true }, modifier = Modifier.fillMaxSize()) {}
                     }
                 }
+                val attachedName = attachment?.name ?: task?.attachmentName
+                TextButton(onClick = pickAttachment) {
+                    Icon(painterResource(R.drawable.ic_file), null, tint = Gt.Primary, modifier = Modifier.size(18.dp))
+                    Text(
+                        attachedName ?: stringResource(R.string.attach_file_optional),
+                        style = GtType.Label.copy(color = Gt.Primary),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
             }
         },
         confirmButton = {
@@ -338,7 +363,7 @@ private fun TaskEditDialog(
                 titleError = if (title.isBlank()) required else null
                 assigneeError = if (assignee == null) required else null
                 val who = assignee
-                if (titleError == null && who != null) onSave(TaskRequest(title.trim(), description.trim().ifEmpty { null }, who.id, due))
+                if (titleError == null && who != null) onSave(TaskRequest(title.trim(), description.trim().ifEmpty { null }, who.id, due), attachment)
             }) { Text(stringResource(R.string.save), style = GtType.Label.copy(color = Gt.Primary)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel), style = GtType.Label.copy(color = Gt.TextSecondary)) } },

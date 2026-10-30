@@ -249,6 +249,9 @@ data class TaskItem(
     val status: TaskStatus,
     val dueDate: String?,
     val completedAt: String?,
+    val attachmentName: String? = null,
+    val solutionNote: String? = null,
+    val solutionFileName: String? = null,
 )
 
 data class TaskRequest(
@@ -257,8 +260,6 @@ data class TaskRequest(
     val assigneeId: String,
     val dueDate: String?,
 )
-
-data class TaskStatusRequest(val status: TaskStatus)
 
 data class NotificationItem(
     val id: String,
@@ -270,5 +271,7 @@ data class NotificationItem(
 )
 
 data class FeedbackRequest(val body: String)
+
+data class MilestoneRequest(val name: String, val dueDate: String)
 
 data class ApiErrorBody(val message: String?)

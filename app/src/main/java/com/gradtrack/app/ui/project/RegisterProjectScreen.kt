@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,9 +53,11 @@ import com.gradtrack.app.data.model.RegisterProjectRequest
 import com.gradtrack.app.data.model.TeamInfo
 import com.gradtrack.app.data.repository.ProjectRepository
 import com.gradtrack.app.data.repository.TeamRepository
+import com.gradtrack.app.data.repository.UploadFile
 import com.gradtrack.app.ui.Routes
 import com.gradtrack.app.ui.common.EventsEffect
 import com.gradtrack.app.ui.common.LoadableViewModel
+import com.gradtrack.app.ui.common.LocalSnackbar
 import com.gradtrack.app.ui.common.UiEvent
 import com.gradtrack.app.ui.common.UiState
 import com.gradtrack.app.ui.common.appViewModel
@@ -73,6 +76,9 @@ import com.gradtrack.app.ui.components.SkeletonPage
 import com.gradtrack.app.ui.components.TextAction
 import com.gradtrack.app.ui.theme.Gt
 import com.gradtrack.app.ui.theme.GtType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class RegisterData(val team: TeamInfo?, val project: Project?)
 
@@ -83,6 +89,8 @@ data class ProjectDraft(
     val objectives: String = "",
     val technologies: List<String> = emptyList(),
     val fileName: String? = null,
+    /** A newly picked file; null keeps whatever was uploaded with the last submission. */
+    val fileUri: Uri? = null,
     val targetUsers: String = "",
     val duration: String = "",
 )
@@ -127,12 +135,14 @@ class RegisterProjectViewModel(
         this.step = step.coerceIn(0, 2)
     }
 
-    fun submit() {
+    fun submit(file: UploadFile?) {
         val d = draft
         act({
-            projects.register(
-                RegisterProjectRequest(d.title, d.category, d.problem, d.objectives, d.technologies, d.fileName, d.targetUsers, d.duration.toIntOrNull() ?: 0),
-            )
+            val registered =
+                projects.register(
+                    RegisterProjectRequest(d.title, d.category, d.problem, d.objectives, d.technologies, d.fileName, d.targetUsers, d.duration.toIntOrNull() ?: 0),
+                )
+            if (registered is Resource.Success && file != null) projects.uploadProposal(file) else registered
         }) { send(UiEvent.Done(R.string.proposal_submitted)) }
     }
 }
@@ -206,6 +216,8 @@ private fun Wizard(vm: RegisterProjectViewModel, data: RegisterData, busy: Boole
     val errProblem = stringResource(R.string.error_problem_short)
     val errDuration = stringResource(R.string.error_duration)
     val errPdf = stringResource(R.string.error_pdf_required)
+    val scope = rememberCoroutineScope()
+    val snackbar = LocalSnackbar.current
 
     val pickPdf =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -221,7 +233,7 @@ private fun Wizard(vm: RegisterProjectViewModel, data: RegisterData, busy: Boole
             if (size > MAX_FILE_BYTES) {
                 errors = StepOneErrors(file = tooLarge)
             } else {
-                vm.draft = vm.draft.copy(fileName = name)
+                vm.draft = vm.draft.copy(fileName = name, fileUri = uri)
                 errors = StepOneErrors()
             }
         }
@@ -281,7 +293,16 @@ private fun Wizard(vm: RegisterProjectViewModel, data: RegisterData, busy: Boole
                     when (step) {
                         0 -> if (validate()) vm.goTo(1)
                         1 -> vm.goTo(2)
-                        else -> vm.submit()
+                        else ->
+                            scope.launch {
+                                val uri = d.fileUri
+                                val bytes = uri?.let { withContext(Dispatchers.IO) { runCatching { context.contentResolver.openInputStream(it)?.use { s -> s.readBytes() } }.getOrNull() } }
+                                if (uri != null && bytes == null) {
+                                    snackbar.showSnackbar(resources.getString(R.string.error_file_read))
+                                } else {
+                                    vm.submit(if (uri != null && bytes != null) UploadFile(d.fileName ?: "proposal.pdf", context.contentResolver.getType(uri), bytes) else null)
+                                }
+                            }
                     }
                 },
                 modifier = Modifier.weight(2f),

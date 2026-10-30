@@ -92,6 +92,9 @@ data class TaskRecord(
     var status: TaskStatus = TaskStatus.TODO,
     var dueDate: String? = null,
     var completedAt: String? = null,
+    var attachmentName: String? = null,
+    var solutionNote: String? = null,
+    var solutionFileName: String? = null,
 )
 
 data class NotificationRecord(
