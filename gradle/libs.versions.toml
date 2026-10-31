@@ -14,8 +14,11 @@ junit4 = "4.13.2"
 truth = "1.4.5"
 backdrop = "2.0.1"
 kyant-shapes = "1.2.1"
+firebase-bom = "35.1.0"
 
 [libraries]
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
+firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }

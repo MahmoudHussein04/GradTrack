@@ -13,13 +13,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gradtrack.app.R
+import com.gradtrack.app.ui.Routes
 import com.gradtrack.app.data.model.Invitation
 import com.gradtrack.app.data.model.MyTeam
 import com.gradtrack.app.data.model.Role
@@ -36,7 +35,6 @@ import com.gradtrack.app.ui.components.Avatar
 import com.gradtrack.app.ui.components.ConfirmDialog
 import com.gradtrack.app.ui.components.EmptyState
 import com.gradtrack.app.ui.components.GtCard
-import com.gradtrack.app.ui.components.HeroCard
 import com.gradtrack.app.ui.components.LabeledValue
 import com.gradtrack.app.ui.components.LoadableScreen
 import com.gradtrack.app.ui.components.MemberRow
@@ -47,16 +45,9 @@ import com.gradtrack.app.ui.components.SectionTitle
 import com.gradtrack.app.ui.components.StatCard
 import com.gradtrack.app.ui.components.StatRow
 import com.gradtrack.app.ui.components.TextPromptDialog
-import com.gradtrack.app.ui.theme.Gt
 import com.gradtrack.app.ui.theme.GtType
 
 class TeamViewModel(private val repository: TeamRepository) : LoadableViewModel<MyTeam>({ repository.myTeam() }) {
-    fun create(name: String) = act({ repository.create(name) }) { send(UiEvent.Message(R.string.team_created)); refresh() }
-
-    fun accept(invitation: Invitation) = act({ repository.accept(invitation.id) }) { send(UiEvent.Message(R.string.joined_team)); refresh() }
-
-    fun decline(invitation: Invitation) = act({ repository.decline(invitation.id) }) { refresh() }
-
     fun invite(universityId: String) =
         act({ repository.invite(universityId) }) {
             patch { it.copy(team = it.team?.copy(pendingInvites = it.team.pendingInvites + 1)) }
@@ -71,15 +62,13 @@ class TeamViewModel(private val repository: TeamRepository) : LoadableViewModel<
 }
 
 private sealed interface TeamDialog {
-    data object Create : TeamDialog
-
     data object Invite : TeamDialog
 
     data class Remove(val member: TeamMember) : TeamDialog
 }
 
 @Composable
-fun TeamScreen() {
+fun TeamScreen(onNavigate: (String) -> Unit) {
     val vm = appViewModel { TeamViewModel(it.team) }
     val state by vm.state.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
@@ -90,11 +79,6 @@ fun TeamScreen() {
     EventsEffect(vm)
 
     when (val d = dialog) {
-        TeamDialog.Create ->
-            TextPromptDialog(stringResource(R.string.create_team), stringResource(R.string.hint_team_name), stringResource(R.string.create), { dialog = null }, {
-                dialog = null
-                vm.create(it)
-            })
         TeamDialog.Invite ->
             TextPromptDialog(stringResource(R.string.invite_member), stringResource(R.string.hint_university_id), stringResource(R.string.send_invitation), { dialog = null }, {
                 dialog = null
@@ -118,32 +102,14 @@ fun TeamScreen() {
             )
         }
         if (team == null) {
-            if (isLeader) {
-                item {
-                    EmptyState(
-                        R.drawable.ic_team,
-                        stringResource(R.string.empty_create_team_title),
-                        stringResource(R.string.empty_create_team_body),
-                        primary = stringResource(R.string.create_team),
-                        onPrimary = { dialog = TeamDialog.Create },
-                    )
-                }
-            } else {
-                item {
-                    HeroCard {
-                        Text(stringResource(R.string.your_university_id), style = GtType.Caption.copy(color = Gt.Muted))
-                        Text(user?.universityId.orEmpty(), style = GtType.Display.copy(color = Color.White, fontSize = 28.sp, letterSpacing = 2.sp), modifier = Modifier.padding(top = 4.dp))
-                        Text(stringResource(R.string.share_id_hint), style = GtType.Caption.copy(color = Gt.Muted), modifier = Modifier.padding(top = 6.dp))
-                    }
-                }
-                if (data.invitations.isEmpty()) {
-                    item { EmptyState(R.drawable.ic_mail, stringResource(R.string.empty_invitations_title), stringResource(R.string.empty_invitations_body)) }
-                } else {
-                    item { SectionTitle(stringResource(R.string.invitations)) }
-                    data.invitations.forEach { invitation ->
-                        item(key = invitation.id) { InvitationCard(invitation, busy, onAccept = { vm.accept(invitation) }, onDecline = { vm.decline(invitation) }) }
-                    }
-                }
+            item {
+                EmptyState(
+                    R.drawable.ic_team,
+                    stringResource(R.string.start_team_needed_title),
+                    stringResource(R.string.start_team_needed_body),
+                    primary = stringResource(R.string.get_started),
+                    onPrimary = { onNavigate(Routes.TEAM_START) },
+                )
             }
             return@LoadableScreen
         }
@@ -191,7 +157,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.teamContent(
 }
 
 @Composable
-private fun InvitationCard(invitation: Invitation, busy: Boolean, onAccept: () -> Unit, onDecline: () -> Unit) {
+internal fun InvitationCard(invitation: Invitation, busy: Boolean, onAccept: () -> Unit, onDecline: () -> Unit) {
     val context = LocalContext.current
     GtCard(padding = 16.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {

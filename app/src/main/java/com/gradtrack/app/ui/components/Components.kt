@@ -216,8 +216,9 @@ fun StatCard(
     caption: String? = null,
     @DrawableRes icon: Int? = null,
     textValue: Boolean = false,
+    onClick: (() -> Unit)? = null,
 ) {
-    GtCard(modifier.fillMaxHeight(), padding = 14.dp) {
+    GtCard(modifier.fillMaxHeight(), padding = 14.dp, onClick = onClick) {
         if (icon != null) {
             IconTile(icon, size = 34.dp)
             Spacer(Modifier.height(10.dp))
@@ -348,7 +349,7 @@ fun NextStepHero(@DrawableRes icon: Int, title: String, body: String, action: St
 fun EmptyState(
     @DrawableRes icon: Int,
     title: String,
-    body: String,
+    body: String?,
     modifier: Modifier = Modifier,
     primary: String? = null,
     onPrimary: () -> Unit = {},
@@ -358,7 +359,7 @@ fun EmptyState(
             Icon(painterResource(icon), null, tint = Gt.Primary, modifier = Modifier.size(32.dp))
         }
         Text(title, style = GtType.Title, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 16.dp))
-        Text(body, style = GtType.Body.copy(color = Gt.TextSecondary), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+        if (body != null) Text(body, style = GtType.Body.copy(color = Gt.TextSecondary), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
         if (primary != null) {
             Spacer(Modifier.height(20.dp))
             PrimaryButton(primary, onPrimary)

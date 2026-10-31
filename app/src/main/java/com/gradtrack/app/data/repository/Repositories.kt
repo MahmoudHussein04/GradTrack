@@ -54,6 +54,13 @@ class AuthRepository(private val api: ApiService, private val session: SessionSt
         return result
     }
 
+    /** Re-reads the signed-in user, e.g. after creating a team turns a student into its leader. */
+    suspend fun refreshUser(): Resource<User> {
+        val result = safeCall { api.me() }
+        if (result is Resource.Success) session.user = result.data
+        return result
+    }
+
     suspend fun logout() {
         safeCall { api.logout() }
         session.clear()

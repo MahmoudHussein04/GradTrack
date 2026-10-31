@@ -86,7 +86,7 @@ fun StudentDashboardScreen(onNavigate: (String) -> Unit) {
             StatRow {
                 StatCard(stringResource(R.string.stat_deadlines_short), data.upcomingDeadlines.toString(), Modifier.weight(1f), stringResource(R.string.stat_next_14_days), R.drawable.ic_calendar)
                 StatCard(stringResource(R.string.stat_feedback_short), data.supervisorFeedback.toString(), Modifier.weight(1f), stringResource(R.string.stat_from_supervisor), R.drawable.ic_feedback)
-                StatCard(stringResource(R.string.stat_team_short), data.teamMembers.toString(), Modifier.weight(1f), stringResource(R.string.stat_members), R.drawable.ic_team)
+                StatCard(stringResource(R.string.stat_team_short), data.teamMembers.toString(), Modifier.weight(1f), stringResource(R.string.stat_members), R.drawable.ic_team, onClick = { onNavigate(Routes.TEAM) })
             }
         }
         deadlinesAndActivity(data.deadlines.isEmpty(), { data.deadlines.forEach { DeadlineRow(it) } }, data.activity.isEmpty(), { data.activity.forEach { ActivityRow(it) } })
@@ -136,17 +136,15 @@ private fun StudentHero(data: StudentDashboard, user: User?, onNavigate: (String
                     HeroButton(stringResource(R.string.open_project), onClick = { onNavigate(Routes.PROJECT) })
                 }
             }
-        !hasTeam && isLeader ->
-            NextStepHero(R.drawable.ic_team, stringResource(R.string.next_create_team_title), stringResource(R.string.next_create_team_body), stringResource(R.string.create_team)) {
+        !hasTeam ->
+            NextStepHero(R.drawable.ic_team, stringResource(R.string.start_team_needed_title), stringResource(R.string.start_team_needed_body), stringResource(R.string.get_started)) {
+                onNavigate(Routes.TEAM_START)
+            }
+        // A brand-new leader is the only member: building the team comes before the proposal.
+        isLeader && data.teamMembers <= 1 ->
+            NextStepHero(R.drawable.ic_person_add, stringResource(R.string.next_invite_title), stringResource(R.string.next_invite_body), stringResource(R.string.invite_member)) {
                 onNavigate(Routes.TEAM)
             }
-        !hasTeam ->
-            NextStepHero(
-                R.drawable.ic_person_add,
-                stringResource(R.string.next_join_team_title),
-                stringResource(R.string.next_join_team_body, user?.universityId.orEmpty()),
-                stringResource(R.string.view_invitations),
-            ) { onNavigate(Routes.TEAM) }
         isLeader ->
             NextStepHero(R.drawable.ic_proposals, stringResource(R.string.next_register_title), stringResource(R.string.next_register_body), stringResource(R.string.register_project)) {
                 onNavigate(Routes.REGISTER_PROJECT)

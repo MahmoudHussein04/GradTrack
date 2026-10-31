@@ -46,7 +46,6 @@ import com.gradtrack.app.data.model.UpdateProfileRequest
 import com.gradtrack.app.data.model.User
 import com.gradtrack.app.data.remote.ApiService
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -58,7 +57,6 @@ import okio.Buffer
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import java.io.File
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
@@ -70,12 +68,13 @@ class LocalApiService(
     context: Context,
     private val session: SessionStore,
     private val openLogin: Boolean,
+    private val store: StateStore,
 ) : ApiService {
-    private val file = File(context.filesDir, "gradtrack-local.json")
-    private val uploadsDir = File(context.filesDir, "uploads")
+    private val appContext = context.applicationContext
     private val gson = Gson()
     private val mutex = Mutex()
-    private val db: LocalDb = load().also { importAccounts(context, it) }.also { db -> db.projects.forEach { db.syncMilestones(it) } }.also { db -> db.dropSupervisorMilestoneNotices() }
+    private var db = LocalDb()
+    private var version = 0L
 
     override suspend fun login(request: LoginRequest): AuthResponse =
         write {
@@ -88,10 +87,13 @@ class LocalApiService(
                         if (!openLogin && account.passwordHash != hash(request.password, account.salt)) fail(401, "Incorrect university ID or password.")
                         account.user!!
                     }
-                    openLogin -> createTestAccount(id, request.role, request.password)
+                    // Everyone starts as a student; creating a team is what makes someone a leader.
+                    openLogin -> createTestAccount(id, if (request.role == Role.SUPERVISOR) Role.SUPERVISOR else Role.STUDENT, request.password)
                     else -> fail(401, "Incorrect university ID or password.")
                 }
-            if (user.role != request.role) fail(403, "This university ID belongs to a ${roleName(user.role)}. Use the ${roleName(user.role)} login.")
+            if ((user.role == Role.SUPERVISOR) != (request.role == Role.SUPERVISOR)) {
+                fail(403, if (user.role == Role.SUPERVISOR) "This university ID belongs to a supervisor. Use the supervisor login." else "This university ID belongs to a student. Use the student login.")
+            }
             AuthResponse(token(user), user)
         }
 
@@ -104,6 +106,8 @@ class LocalApiService(
     }
 
     override suspend fun logout() = Unit
+
+    override suspend fun me(): User = read { me() }
 
     override suspend fun updateProfile(request: UpdateProfileRequest): User =
         write {
@@ -297,8 +301,7 @@ class LocalApiService(
             val name = file.headers?.get("Content-Disposition")?.substringAfter("filename=\"", "")?.substringBefore('"')?.ifBlank { null } ?: "deliverable"
             val record = SubmissionRecord(newId("s"), project.id, milestone.id, name, milestone.name, Instant.now().toString(), me.id)
             val bytes = Buffer().also { file.body.writeTo(it) }.readByteArray()
-            uploadsDir.mkdirs()
-            File(uploadsDir, record.id).writeBytes(bytes)
+            store.putFile(record.id, bytes)
             submissions += record
             notify(listOf(project.supervisorId), NotificationType.SUBMISSION, "New submission", "${teamName(project.teamId)} submitted $name for ${milestone.name}.")
             toModel(record)
@@ -348,9 +351,8 @@ class LocalApiService(
             val project = projects.first { it.id == submission.projectId }
             val allowed = project.supervisorId == me.id || teams.firstOrNull { it.id == project.teamId }?.memberIds?.contains(me.id) == true
             if (!allowed) fail(403, "You can't open this file.")
-            val stored = File(uploadsDir, submission.id)
-            if (!stored.exists()) fail(404, "This file is no longer available. Ask the team to upload it again.")
-            stored.readBytes().toResponseBody("application/octet-stream".toMediaType())
+            val bytes = store.getFile(submission.id) ?: fail(404, "This file is no longer available. Ask the team to upload it again.")
+            bytes.toResponseBody("application/octet-stream".toMediaType())
         }
 
     override suspend fun myTeam(): MyTeam =
@@ -371,14 +373,18 @@ class LocalApiService(
 
     override suspend fun createTeam(request: CreateTeamRequest): TeamInfo =
         write {
-            val me = requireRole(Role.LEADER, "Only team leaders can create a team.")
-            if (teamOf(me.id) != null) fail(409, "You already lead a team.")
+            val me = me()
+            if (me.role == Role.SUPERVISOR) fail(403, "Supervisors can't create teams.")
+            if (teamOf(me.id) != null) fail(409, "You are already in a team.")
             val name = request.name.trim()
             if (name.length < 3) fail(422, "The team name must be at least 3 characters.")
             if (teams.any { it.name.equals(name, ignoreCase = true) }) fail(409, "Another team already uses this name.")
             val team = TeamRecord(newId("t"), name, me.id, MAX_MEMBERS, mutableListOf(me.id), Instant.now().toString())
             assignSupervisor(team)
             teams += team
+            // Starting a team makes this student its leader; their pending invitations no longer apply.
+            account(me.id).user = me.copy(role = Role.LEADER)
+            invitations.filter { it.userId == me.id && it.status == InvitationRecord.STATUS_PENDING }.forEach { it.status = InvitationRecord.STATUS_DECLINED }
             toModel(team)
         }
 
@@ -521,8 +527,8 @@ class LocalApiService(
             val team = teamOf(me.id) ?: fail(404, "You have no team.")
             val task = tasks.firstOrNull { it.id == id && it.teamId == team.id } ?: fail(404, "Task not found.")
             tasks.remove(task)
-            File(uploadsDir, "${task.id}-brief").delete()
-            File(uploadsDir, "${task.id}-solution").delete()
+            store.deleteFile("${task.id}-brief")
+            store.deleteFile("${task.id}-solution")
             if (task.assigneeId != me.id) notify(listOf(task.assigneeId), NotificationType.TASK, "Task removed", "${me.fullName} deleted \"${task.title}\".")
         }
 
@@ -790,15 +796,13 @@ class LocalApiService(
 
     private fun storeUpload(file: MultipartBody.Part, key: String, fallback: String): String {
         val name = file.headers?.get("Content-Disposition")?.substringAfter("filename=\"", "")?.substringBefore('"')?.ifBlank { null } ?: fallback
-        uploadsDir.mkdirs()
-        File(uploadsDir, key).writeBytes(Buffer().also { file.body.writeTo(it) }.readByteArray())
+        store.putFile(key, Buffer().also { file.body.writeTo(it) }.readByteArray())
         return name
     }
 
     private fun storedUpload(key: String): ResponseBody {
-        val stored = File(uploadsDir, key)
-        if (!stored.exists()) fail(404, "This file was never uploaded or is no longer available. Ask the team to upload it again.")
-        return stored.readBytes().toResponseBody("application/octet-stream".toMediaType())
+        val bytes = store.getFile(key) ?: fail(404, "This file was never uploaded or is no longer available. Ask the team to upload it again.")
+        return bytes.toResponseBody("application/octet-stream".toMediaType())
     }
 
     private fun MilestoneRecord.toModel() = Milestone(id, name, dueDate, status)
@@ -806,7 +810,6 @@ class LocalApiService(
     private fun importAccounts(context: Context, db: LocalDb) {
         val json = runCatching { context.assets.open(ACCOUNTS_FILE).bufferedReader().use { it.readText() } }.getOrNull() ?: return
         val listing = runCatching { gson.fromJson(json, AccountsFile::class.java) }.getOrNull() ?: return
-        var added = false
         listing.accounts.orEmpty().forEach { entry ->
             val role = entry.role?.let { name -> Role.entries.firstOrNull { it.name.equals(name, ignoreCase = true) || (name.equals("leader", true) && it == Role.LEADER) } }
             val email = entry.email?.trim().orEmpty()
@@ -829,9 +832,7 @@ class LocalApiService(
                 )
             val salt = newSalt()
             db.accounts += AccountRecord(user, salt, hash(entry.password!!, salt))
-            added = true
         }
-        if (added) runCatching { file.writeText(gson.toJson(db)) }
     }
 
     private class AccountsFile(val accounts: List<AccountEntry>?)
@@ -855,27 +856,36 @@ class LocalApiService(
 
     private suspend fun <T> read(block: LocalDb.() -> T): T =
         mutex.withLock {
-            delay(LATENCY_MS)
-            db.block()
+            withContext(Dispatchers.IO) {
+                refresh()
+                db.block()
+            }
         }
 
+    /**
+     * Runs [block] on the latest saved state and saves the result. If another phone saved in between,
+     * the block runs again on its data, so nothing is overwritten and a failed block leaves no half-done changes.
+     */
     private suspend fun <T> write(block: LocalDb.() -> T): T =
         mutex.withLock {
-            delay(LATENCY_MS)
-            val result = db.block()
-            persist()
-            result
+            withContext(Dispatchers.IO) {
+                repeat(WRITE_ATTEMPTS) {
+                    refresh()
+                    val result = db.block()
+                    if (store.save(gson.toJson(db), version)) return@withContext result
+                }
+                fail(503, "Someone else is updating the data right now. Please try again.")
+            }
         }
 
-    private fun load(): LocalDb =
-        runCatching { if (file.exists()) gson.fromJson(file.readText(), LocalDb::class.java) else null }.getOrNull() ?: LocalDb()
-
-    private suspend fun persist() =
-        withContext(Dispatchers.IO) {
-            val tmp = File(file.parentFile, "${file.name}.tmp")
-            tmp.writeText(gson.toJson(db))
-            tmp.renameTo(file)
-        }
+    private fun refresh() {
+        val snapshot = store.load()
+        db = snapshot?.let { runCatching { gson.fromJson(it.json, LocalDb::class.java) }.getOrNull() } ?: LocalDb()
+        version = snapshot?.version ?: 0
+        importAccounts(appContext, db)
+        db.projects.forEach { db.syncMilestones(it) }
+        db.dropSupervisorMilestoneNotices()
+    }
 
     private fun LocalDb.newId(prefix: String) = "${prefix}_${nextId++}"
 
@@ -913,7 +923,7 @@ class LocalApiService(
     }
 
     private companion object {
-        const val LATENCY_MS = 250L
+        const val WRITE_ATTEMPTS = 5
         const val ACCOUNTS_FILE = "accounts.json"
         const val MAX_MEMBERS = 4
         val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$")

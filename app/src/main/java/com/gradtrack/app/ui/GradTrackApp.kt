@@ -76,6 +76,7 @@ import com.gradtrack.app.ui.review.SubmissionReviewScreen
 import com.gradtrack.app.ui.tasks.TaskDetailsScreen
 import com.gradtrack.app.ui.tasks.TasksScreen
 import com.gradtrack.app.ui.team.TeamScreen
+import com.gradtrack.app.ui.team.TeamStartScreen
 import com.gradtrack.app.ui.theme.Gt
 import com.gradtrack.app.ui.theme.GtType
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -94,6 +95,7 @@ object Routes {
     const val REGISTER_PROJECT = "project/register"
     const val PROPOSAL_STATUS = "project/proposal"
     const val TEAM = "team"
+    const val TEAM_START = "team/start"
     const val PROPOSAL_REVIEW = "proposals/{id}"
     const val TASK = "tasks/{id}"
 
@@ -214,7 +216,7 @@ fun GradTrackApp(container: AppContainer) {
                         popEnterTransition = { fadeIn(tween(220)) },
                         popExitTransition = { fadeOut(tween(150)) },
                     ) {
-                        composable(Routes.LOGIN) { LoginScreen(onSignedIn = { nav.restartAt(homeRoute(container.session.user)) }) }
+                        composable(Routes.LOGIN) { LoginScreen(onSignedIn = { needsTeam -> nav.restartAt(if (needsTeam) Routes.TEAM_START else homeRoute(container.session.user)) }) }
                         composable(Routes.STUDENT_HOME) { StudentDashboardScreen(onNavigate = go) }
                         composable(Routes.PROJECT) { ProjectDetailsScreen(onNavigate = go) }
                         composable(Routes.TASKS) { TasksScreen(onNavigate = go) }
@@ -232,7 +234,10 @@ fun GradTrackApp(container: AppContainer) {
                             )
                         }
                         composable(Routes.PROPOSAL_STATUS) { ProposalStatusScreen(onNavigate = go) }
-                        composable(Routes.TEAM) { TeamScreen() }
+                        composable(Routes.TEAM) { TeamScreen(onNavigate = go) }
+                        composable(Routes.TEAM_START) {
+                            TeamStartScreen(onReady = { nav.restartAt(homeRoute(container.session.user)) }, onSignedOut = { nav.restartAt(Routes.LOGIN) })
+                        }
                         composable(Routes.PROPOSAL_REVIEW) { backStack ->
                             ProposalReviewScreen(proposalId = backStack.arguments?.getString("id").orEmpty())
                         }

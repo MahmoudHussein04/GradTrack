@@ -47,6 +47,9 @@ interface ApiService {
     @POST("auth/logout")
     suspend fun logout()
 
+    @GET("me")
+    suspend fun me(): User
+
     @PATCH("me")
     suspend fun updateProfile(@Body request: UpdateProfileRequest): User
 

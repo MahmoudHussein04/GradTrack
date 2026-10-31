@@ -1,9 +1,9 @@
 package com.gradtrack.app.ui.login
 
-import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -43,17 +44,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gradtrack.app.R
+import com.gradtrack.app.data.Resource
 import com.gradtrack.app.data.model.Role
 import com.gradtrack.app.data.repository.AuthRepository
+import com.gradtrack.app.data.repository.TeamRepository
 import com.gradtrack.app.ui.common.BaseViewModel
 import com.gradtrack.app.ui.common.EventsEffect
 import com.gradtrack.app.ui.common.LocalSnackbar
 import com.gradtrack.app.ui.common.UiEvent
 import com.gradtrack.app.ui.common.appViewModel
-import com.gradtrack.app.ui.components.GtCard
 import com.gradtrack.app.ui.components.GtTextField
-import com.gradtrack.app.ui.components.HeroCard
-import com.gradtrack.app.ui.components.IconTile
 import com.gradtrack.app.ui.components.PrimaryButton
 import com.gradtrack.app.ui.components.TextAction
 import com.gradtrack.app.ui.theme.Gt
@@ -64,7 +64,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class LoginViewModel(private val auth: AuthRepository) : BaseViewModel() {
+class LoginViewModel(private val auth: AuthRepository, private val teams: TeamRepository) : BaseViewModel() {
     private val _role = MutableStateFlow(Role.STUDENT)
 
     val role: StateFlow<Role> = _role.asStateFlow()
@@ -73,12 +73,20 @@ class LoginViewModel(private val auth: AuthRepository) : BaseViewModel() {
         _role.value = role
     }
 
-    fun login(identifier: String, password: String) = act({ auth.login(identifier, password, role.value) }) { send(UiEvent.Done()) }
+    /** True when the student who just signed in still has to create or join a team. */
+    var needsTeam = false
+        private set
+
+    fun login(identifier: String, password: String) =
+        act({ auth.login(identifier, password, role.value) }) { response ->
+            needsTeam = response.user.role != Role.SUPERVISOR && (teams.myTeam() as? Resource.Success)?.data?.team == null
+            send(UiEvent.Done())
+        }
 }
 
 @Composable
-fun LoginScreen(onSignedIn: () -> Unit) {
-    val vm = appViewModel { LoginViewModel(it.auth) }
+fun LoginScreen(onSignedIn: (needsTeam: Boolean) -> Unit) {
+    val vm = appViewModel { LoginViewModel(it.auth, it.team) }
     val role by vm.role.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val snackbar = LocalSnackbar.current
@@ -92,7 +100,7 @@ fun LoginScreen(onSignedIn: () -> Unit) {
     val required = stringResource(R.string.error_required)
     val forgotText = stringResource(R.string.forgot_password_soon)
 
-    EventsEffect(vm) { onSignedIn() }
+    EventsEffect(vm) { onSignedIn(vm.needsTeam) }
 
     fun submit() {
         idError = if (identifier.isBlank()) required else null
@@ -142,8 +150,16 @@ fun LoginScreen(onSignedIn: () -> Unit) {
             Text(stringResource(R.string.login_welcome), style = GtType.Display)
             Text(stringResource(R.string.login_subtitle), style = GtType.PageSubtitle, modifier = Modifier.padding(top = 4.dp))
 
-            Text(stringResource(role.loginTitle()), style = GtType.Title, modifier = Modifier.padding(top = 22.dp))
-            Text(stringResource(role.loginHelper()), style = GtType.Caption, modifier = Modifier.padding(top = 2.dp, bottom = 12.dp))
+            RoleSwitch(role, Modifier.padding(top = 22.dp)) { other ->
+                if (other != role) {
+                    identifier = ""
+                    password = ""
+                    idError = null
+                    passwordError = null
+                    vm.select(other)
+                }
+            }
+            Text(stringResource(role.loginHelper()), style = GtType.Caption, modifier = Modifier.padding(top = 10.dp, bottom = 14.dp))
 
             GtTextField(
                 value = identifier,
@@ -178,24 +194,6 @@ fun LoginScreen(onSignedIn: () -> Unit) {
             PrimaryButton(stringResource(role.loginButton()), ::submit, modifier = Modifier.fillMaxWidth(), loading = busy)
             LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp).alpha(if (busy) 1f else 0f), color = Gt.Primary, trackColor = Gt.Track)
 
-            Text(stringResource(R.string.or_continue_as), style = GtType.Title, modifier = Modifier.padding(top = 18.dp))
-            Text(
-                stringResource(if (role == Role.STUDENT) R.string.or_continue_as_hint else R.string.or_continue_as_switch),
-                style = GtType.Caption,
-                modifier = Modifier.padding(top = 2.dp, bottom = 12.dp),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Role.entries.filter { it != role }.forEach { other ->
-                    RoleOption(other, Modifier.weight(1f)) {
-                        identifier = ""
-                        password = ""
-                        idError = null
-                        passwordError = null
-                        vm.select(other)
-                        scope.launch { scroll.animateScrollTo(0) }
-                    }
-                }
-            }
             Text(
                 stringResource(R.string.login_footer),
                 style = GtType.Caption,
@@ -206,33 +204,37 @@ fun LoginScreen(onSignedIn: () -> Unit) {
     }
 }
 
+/** Students (team leaders included) and supervisors are the only two ways in. */
 @Composable
-private fun RoleOption(role: Role, modifier: Modifier, onClick: () -> Unit) {
-    val (icon, title) = role.option()
-    GtCard(modifier, padding = 14.dp, onClick = onClick) {
-        IconTile(icon, size = 36.dp)
-        Text(stringResource(title), style = GtType.Title, modifier = Modifier.padding(top = 10.dp))
-        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.sign_in), style = GtType.Label.copy(color = Gt.Primary))
-            Icon(painterResource(R.drawable.ic_chevron_right), null, tint = Gt.Primary, modifier = Modifier.size(18.dp))
+private fun RoleSwitch(selected: Role, modifier: Modifier = Modifier, onSelect: (Role) -> Unit) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .background(Gt.PrimarySoft, RoundedCornerShape(16.dp))
+            .padding(4.dp),
+    ) {
+        listOf(Role.STUDENT to R.drawable.ic_school, Role.SUPERVISOR to R.drawable.ic_proposals).forEach { (role, icon) ->
+            val active = role == selected
+            Row(
+                Modifier
+                    .weight(1f)
+                    .height(46.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (active) Gt.Surface else Color.Transparent)
+                    .clickable { onSelect(role) },
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(painterResource(icon), null, tint = if (active) Gt.Primary else Gt.TextSecondary, modifier = Modifier.size(18.dp))
+                Text(
+                    stringResource(if (role == Role.SUPERVISOR) R.string.role_supervisor else R.string.role_student),
+                    style = GtType.Label.copy(color = if (active) Gt.PrimaryDark else Gt.TextSecondary),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
         }
     }
 }
-
-private fun Role.option(): Pair<Int, Int> =
-    when (this) {
-        Role.STUDENT -> R.drawable.ic_school to R.string.role_student
-        Role.LEADER -> R.drawable.ic_team to R.string.role_team_leader
-        Role.SUPERVISOR -> R.drawable.ic_proposals to R.string.role_supervisor
-    }
-
-@StringRes
-private fun Role.loginTitle() =
-    when (this) {
-        Role.STUDENT -> R.string.login_title_student
-        Role.LEADER -> R.string.login_title_leader
-        Role.SUPERVISOR -> R.string.login_title_supervisor
-    }
 
 @StringRes
 private fun Role.loginHelper() =
