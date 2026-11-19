@@ -27,6 +27,7 @@ import com.gradtrack.app.ui.components.SectionTitle
 import com.gradtrack.app.ui.components.StatCard
 import com.gradtrack.app.ui.components.StatRow
 import com.gradtrack.app.ui.components.TextAction
+import com.gradtrack.app.ui.team.SupervisedTeamRow
 
 class SupervisorDashboardViewModel(repository: DashboardRepository) : LoadableViewModel<SupervisorDashboard>({ repository.supervisor() })
 
@@ -70,6 +71,16 @@ fun SupervisorDashboardScreen(onNavigate: (String) -> Unit) {
                 StatCard(stringResource(R.string.stat_projects_short), data.activeProjects.toString(), Modifier.weight(1f), stringResource(R.string.stat_active), R.drawable.ic_project)
                 StatCard(stringResource(R.string.stat_to_review_short), data.submissionsToReview.toString(), Modifier.weight(1f), stringResource(R.string.stat_submissions), R.drawable.ic_submissions)
                 StatCard(stringResource(R.string.stat_deadlines_short), data.upcomingDeadlines.toString(), Modifier.weight(1f), stringResource(R.string.stat_next_two_weeks), R.drawable.ic_calendar)
+            }
+        }
+        item {
+            GtCard {
+                SectionTitle(stringResource(R.string.your_teams))
+                if (data.teams.isEmpty()) {
+                    MutedText(stringResource(R.string.no_teams_yet), Modifier.padding(top = 4.dp))
+                } else {
+                    data.teams.forEach { team -> SupervisedTeamRow(team) { onNavigate(Routes.supervisedTeam(team.id)) } }
+                }
             }
         }
         item {

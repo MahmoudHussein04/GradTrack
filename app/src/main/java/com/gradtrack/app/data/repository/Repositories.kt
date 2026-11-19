@@ -8,6 +8,7 @@ import com.gradtrack.app.data.model.CreateTeamRequest
 import com.gradtrack.app.data.model.Feedback
 import com.gradtrack.app.data.model.FeedbackRequest
 import com.gradtrack.app.data.model.InviteRequest
+import com.gradtrack.app.data.model.LeaderRequest
 import com.gradtrack.app.data.model.LoginRequest
 import com.gradtrack.app.data.model.Milestone
 import com.gradtrack.app.data.model.MilestoneRequest
@@ -118,6 +119,16 @@ class TeamRepository(private val api: ApiService) {
     suspend fun invite(universityId: String): Resource<Unit> = safeCall { api.inviteMember(InviteRequest(universityId.trim())) }
 
     suspend fun remove(userId: String): Resource<Unit> = safeCall { api.removeMember(userId) }
+
+    suspend fun team(id: String): Resource<TeamInfo> = safeCall { api.team(id) }
+
+    suspend fun addMember(teamId: String, universityId: String): Resource<TeamInfo> = safeCall { api.addTeamMember(teamId, InviteRequest(universityId.trim())) }
+
+    suspend fun removeMember(teamId: String, userId: String): Resource<TeamInfo> = safeCall { api.removeTeamMember(teamId, userId) }
+
+    suspend fun changeLeader(teamId: String, userId: String): Resource<TeamInfo> = safeCall { api.changeTeamLeader(teamId, LeaderRequest(userId)) }
+
+    suspend fun delete(teamId: String): Resource<Unit> = safeCall { api.deleteTeam(teamId) }
 }
 
 class TaskRepository(private val api: ApiService) {

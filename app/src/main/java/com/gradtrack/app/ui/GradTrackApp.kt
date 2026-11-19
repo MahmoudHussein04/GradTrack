@@ -76,6 +76,7 @@ import com.gradtrack.app.ui.review.SubmissionReviewScreen
 import com.gradtrack.app.ui.tasks.TaskDetailsScreen
 import com.gradtrack.app.ui.tasks.TasksScreen
 import com.gradtrack.app.ui.team.TeamScreen
+import com.gradtrack.app.ui.team.SupervisorTeamScreen
 import com.gradtrack.app.ui.team.TeamStartScreen
 import com.gradtrack.app.ui.theme.Gt
 import com.gradtrack.app.ui.theme.GtType
@@ -96,12 +97,15 @@ object Routes {
     const val PROPOSAL_STATUS = "project/proposal"
     const val TEAM = "team"
     const val TEAM_START = "team/start"
+    const val SUPERVISED_TEAM = "supervisor/teams/{id}"
     const val PROPOSAL_REVIEW = "proposals/{id}"
     const val TASK = "tasks/{id}"
 
     fun proposalReview(id: String) = "proposals/$id"
 
     fun task(id: String) = "tasks/$id"
+
+    fun supervisedTeam(id: String) = "supervisor/teams/$id"
 }
 
 private val studentTabs =
@@ -130,6 +134,7 @@ private fun titleOf(route: String?): Int? =
         Routes.TEAM -> R.string.title_team
         Routes.PROPOSAL_REVIEW -> R.string.title_proposal_review
         Routes.TASK -> R.string.title_task
+        Routes.SUPERVISED_TEAM -> R.string.title_supervised_team
         else -> null
     }
 
@@ -235,6 +240,9 @@ fun GradTrackApp(container: AppContainer) {
                         }
                         composable(Routes.PROPOSAL_STATUS) { ProposalStatusScreen(onNavigate = go) }
                         composable(Routes.TEAM) { TeamScreen(onNavigate = go) }
+                        composable(Routes.SUPERVISED_TEAM) { backStack ->
+                            SupervisorTeamScreen(teamId = backStack.arguments?.getString("id").orEmpty(), onDeleted = { nav.popBackStack() })
+                        }
                         composable(Routes.TEAM_START) {
                             TeamStartScreen(onReady = { nav.restartAt(homeRoute(container.session.user)) }, onSignedOut = { nav.restartAt(Routes.LOGIN) })
                         }

@@ -12,6 +12,7 @@ import com.gradtrack.app.data.model.DocumentInfo
 import com.gradtrack.app.data.model.Feedback
 import com.gradtrack.app.data.model.FeedbackRequest
 import com.gradtrack.app.data.model.InviteRequest
+import com.gradtrack.app.data.model.LeaderRequest
 import com.gradtrack.app.data.model.Invitation
 import com.gradtrack.app.data.model.LoginRequest
 import com.gradtrack.app.data.model.Milestone
@@ -170,6 +171,7 @@ class LocalApiService(
                 proposals = mine.filter { it.status == ProjectStatus.UNDER_REVIEW }.map { summaryOf(it) },
                 deadlines = openMilestones.take(3).map { (p, m) -> Deadline(m.id, "${teamName(p.teamId)} · ${m.name}", m.dueDate) },
                 activity = activityOf(me.id),
+                teams = teams.filter { it.supervisorId == me.id }.sortedBy { it.name.lowercase() }.map { toModel(it) },
             )
         }
 
@@ -437,6 +439,79 @@ class LocalApiService(
             notify(listOf(userId), NotificationType.TEAM, "Removed from team", "You are no longer a member of ${team.name}.")
         }
 
+    override suspend fun team(id: String): TeamInfo = read { toModel(supervisedTeam(id).second) }
+
+    override suspend fun addTeamMember(id: String, request: InviteRequest): TeamInfo =
+        write {
+            val (me, team) = supervisedTeam(id)
+            if (team.memberIds.size >= team.maxMembers) fail(409, "The team is full (${team.maxMembers} members).")
+            val student = accounts.mapNotNull { it.user }.firstOrNull { it.universityId == request.universityId.trim() } ?: fail(404, "No student has this university ID.")
+            if (student.role == Role.SUPERVISOR) fail(409, "Only students can join a team.")
+            if (teamOf(student.id) != null) fail(409, "${student.fullName} is already in a team.")
+            team.memberIds += student.id
+            invitations.filter { it.userId == student.id && it.status == InvitationRecord.STATUS_PENDING }.forEach { it.status = InvitationRecord.STATUS_DECLINED }
+            notify(listOf(student.id), NotificationType.TEAM, "Added to a team", "${me.fullName} added you to ${team.name}.")
+            notify(listOf(team.leaderId), NotificationType.TEAM, "Team member added", "${me.fullName} added ${student.fullName} to ${team.name}.")
+            toModel(team)
+        }
+
+    override suspend fun removeTeamMember(id: String, userId: String): TeamInfo =
+        write {
+            val (me, team) = supervisedTeam(id)
+            if (userId == team.leaderId) fail(409, "Choose a new team leader before removing the current one.")
+            if (!team.memberIds.remove(userId)) fail(404, "This student is not in the team.")
+            tasks.filter { it.teamId == team.id && it.assigneeId == userId && it.status != TaskStatus.DONE }.forEach { it.status = TaskStatus.CANCELLED }
+            notify(listOf(userId), NotificationType.TEAM, "Removed from team", "${me.fullName} removed you from ${team.name}.")
+            notify(listOf(team.leaderId), NotificationType.TEAM, "Team member removed", "${me.fullName} removed ${userName(userId)} from ${team.name}.")
+            toModel(team)
+        }
+
+    override suspend fun changeTeamLeader(id: String, request: LeaderRequest): TeamInfo =
+        write {
+            val (me, team) = supervisedTeam(id)
+            val newLeader = request.userId
+            if (newLeader !in team.memberIds) fail(404, "This student is not in the team.")
+            if (newLeader == team.leaderId) fail(409, "This student already leads the team.")
+            setRole(team.leaderId, Role.STUDENT)
+            setRole(newLeader, Role.LEADER)
+            team.leaderId = newLeader
+            notify(team.memberIds, NotificationType.TEAM, "New team leader", "${me.fullName} made ${userName(newLeader)} the leader of ${team.name}.")
+            toModel(team)
+        }
+
+    override suspend fun deleteTeam(id: String): Unit =
+        write {
+            val (me, team) = supervisedTeam(id)
+            // Everything that belongs to the team goes with it; its members are free to create or join another team.
+            val projectIds = projects.filter { it.teamId == team.id }.map { it.id }.toSet()
+            submissions.filter { it.projectId in projectIds }.forEach { store.deleteFile(it.id) }
+            projectIds.forEach { store.deleteFile("$it-proposal") }
+            tasks.filter { it.teamId == team.id }.forEach {
+                store.deleteFile("${it.id}-brief")
+                store.deleteFile("${it.id}-solution")
+            }
+            submissions.removeAll { it.projectId in projectIds }
+            milestones.removeAll { it.projectId in projectIds }
+            feedback.removeAll { it.projectId in projectIds }
+            projects.removeAll { it.id in projectIds }
+            tasks.removeAll { it.teamId == team.id }
+            invitations.removeAll { it.teamId == team.id }
+            setRole(team.leaderId, Role.STUDENT)
+            teams.remove(team)
+            notify(team.memberIds, NotificationType.TEAM, "Team deleted", "${me.fullName} deleted ${team.name}. You can now create or join another team.")
+        }
+
+    /** A team this supervisor supervises; supervisors cannot manage other supervisors' teams. */
+    private fun LocalDb.supervisedTeam(id: String): Pair<User, TeamRecord> {
+        val me = requireRole(Role.SUPERVISOR, "Only supervisors can manage teams.")
+        val team = teams.firstOrNull { it.id == id && it.supervisorId == me.id } ?: fail(404, "Team not found.")
+        return me to team
+    }
+
+    private fun LocalDb.setRole(userId: String, role: Role) {
+        accounts.firstOrNull { it.user?.id == userId }?.let { account -> account.user = account.user?.copy(role = role) }
+    }
+
     override suspend fun tasks(): List<TaskItem> =
         read {
             val me = me()
@@ -686,8 +761,17 @@ class LocalApiService(
     }
 
     private fun LocalDb.me(): User {
-        val id = session.user?.id ?: fail(401, "Please sign in again.")
-        return accounts.firstOrNull { it.user?.id == id }?.user ?: fail(401, "Your account no longer exists. Please sign in again.")
+        // Like the real API's 401 handling: a missing account (e.g. after the shared data was reset) signs the user out.
+        val id = session.user?.id ?: signedOut("Please sign in again.")
+        val user = accounts.firstOrNull { it.user?.id == id }?.user ?: signedOut("Your account no longer exists. Please sign in again.")
+        // Someone else may have changed this account, e.g. a supervisor naming a new team leader.
+        if (session.user != user) session.user = user
+        return user
+    }
+
+    private fun signedOut(message: String): Nothing {
+        session.onUnauthorized()
+        fail(401, message)
     }
 
     private fun LocalDb.requireRole(role: Role, message: String): User = me().also { if (it.role != role) fail(403, message) }

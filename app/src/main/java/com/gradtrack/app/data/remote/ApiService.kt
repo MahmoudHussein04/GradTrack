@@ -6,6 +6,7 @@ import com.gradtrack.app.data.model.CreateTeamRequest
 import com.gradtrack.app.data.model.Feedback
 import com.gradtrack.app.data.model.FeedbackRequest
 import com.gradtrack.app.data.model.InviteRequest
+import com.gradtrack.app.data.model.LeaderRequest
 import com.gradtrack.app.data.model.LoginRequest
 import com.gradtrack.app.data.model.Milestone
 import com.gradtrack.app.data.model.MilestoneRequest
@@ -124,6 +125,21 @@ interface ApiService {
 
     @DELETE("teams/me/members/{userId}")
     suspend fun removeMember(@Path("userId") userId: String)
+
+    @GET("teams/{id}")
+    suspend fun team(@Path("id") id: String): TeamInfo
+
+    @POST("teams/{id}/members")
+    suspend fun addTeamMember(@Path("id") id: String, @Body request: InviteRequest): TeamInfo
+
+    @DELETE("teams/{id}/members/{userId}")
+    suspend fun removeTeamMember(@Path("id") id: String, @Path("userId") userId: String): TeamInfo
+
+    @PATCH("teams/{id}/leader")
+    suspend fun changeTeamLeader(@Path("id") id: String, @Body request: LeaderRequest): TeamInfo
+
+    @DELETE("teams/{id}")
+    suspend fun deleteTeam(@Path("id") id: String)
 
     @GET("tasks")
     suspend fun tasks(): List<TaskItem>

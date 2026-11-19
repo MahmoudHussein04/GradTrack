@@ -106,6 +106,7 @@ data class SupervisorDashboard(
     val proposals: List<ProposalSummary>,
     val deadlines: List<Deadline>,
     val activity: List<ActivityItem>,
+    val teams: List<TeamInfo> = emptyList(),
 )
 
 data class Project(
@@ -233,6 +234,8 @@ data class TeamInfo(
 )
 
 data class InviteRequest(val universityId: String)
+
+data class LeaderRequest(val userId: String)
 
 data class CreateTeamRequest(val name: String)
 
